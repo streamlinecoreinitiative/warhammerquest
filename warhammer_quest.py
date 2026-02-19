@@ -2199,23 +2199,20 @@ class Game:
 
     def title_screen(self):
         clr()
-        print(co("""
-    ╔══════════════════════════════════════════════════════╗
-    ║                                                      ║
-    ║   ██╗    ██╗ █████╗ ██████╗ ██╗  ██╗ █████╗ ███╗   ║
-    ║   ██║    ██║██╔══██╗██╔══██╗██║  ██║██╔══██╗████╗  ║
-    ║   ██║ █╗ ██║███████║██████╔╝███████║███████║██╔██╗ ║
-    ║   ██║███╗██║██╔══██║██╔══██╗██╔══██║██╔══██║██║╚█║ ║
-    ║   ╚███╔███╔╝██║  ██║██║  ██║██║  ██║██║  ██║██║ █║ ║
-    ║    ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝ ║
-    ║                                                      ║
-    ║         Q U E S T :  D E P T H S  O F  T H E        ║
-    ║              O  L  D    W  O  R  L  D                ║
-    ║                                                      ║
-    ╚══════════════════════════════════════════════════════╝
+        print(co(r"""
+  ╔════════════════════════════════════════════╗
+  ║                                            ║
+  ║  █   █ █▀▀█ █▀▀█ █  █ █▀▀█ █▀█▀█ █▀█▀█  ║
+  ║  █ █ █ █▀▀█ █▀▀▄ █▀▀█ █▀▀█ █ █ █ █ █ █  ║
+  ║  █▄▀▄█ ▀  ▀ ▀  ▀ ▀  ▀ ▀  ▀ ▀ ▀ ▀ ▀▀▀▀▀  ║
+  ║                                            ║
+  ║   Q U E S T :  D E P T H S  O F  T H E    ║
+  ║          O L D   W O R L D                 ║
+  ║                                            ║
+  ╚════════════════════════════════════════════╝
 """, C.BRED))
-        print(co("        A dungeon crawler in the Warhammer Fantasy world", C.CYN))
-        print(co("    Inspired by Warhammer Quest, Diablo, HeroQuest", C.GRY))
+        print(co("   A dungeon crawler in the Warhammer Fantasy world", C.CYN))
+        print(co("   Inspired by Warhammer Quest, Diablo, HeroQuest", C.GRY))
         print()
 
     def run(self):
