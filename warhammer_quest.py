@@ -15,7 +15,7 @@ import os, sys, json, random, time, math, shutil
 from pathlib import Path
 
 SAVE_FILE = Path(__file__).parent / "wq_save.json"
-VERSION = "1.0"
+VERSION = "1.1"
 
 # ═══════════════════════════════════════════════════════════════
 #  ANSI COLORS & DISPLAY HELPERS
@@ -123,6 +123,36 @@ def get_title(depth):
         if depth >= d:
             t = name
     return t
+
+
+def get_depth_mood(depth):
+    mood = DUNGEON_DEPTH_MOODS[0][1]
+    for threshold, text in DUNGEON_DEPTH_MOODS:
+        if depth >= threshold:
+            mood = text
+    return mood
+
+
+def pick_lore_entry(player, depth):
+    undiscovered = [l for l in LORE if l[0] not in player.lore_found]
+    if not undiscovered:
+        return None
+
+    def weight(entry):
+        title = entry[0].lower()
+        body = entry[1].lower()
+        txt = f"{title} {body}"
+        w = 1
+        if depth <= 10 and any(k in txt for k in ("skaven", "dwarf", "empire", "ulric", "reik")):
+            w += 2
+        if depth >= 15 and any(k in txt for k in ("chaos", "daemon", "warp", "morrslieb", "necromancer", "nagash")):
+            w += 2
+        if depth >= 20 and any(k in txt for k in ("tzeentch", "horned rat", "undead", "beastmen")):
+            w += 1
+        return w
+
+    weights = [weight(entry) for entry in undiscovered]
+    return random.choices(undiscovered, weights=weights, k=1)[0]
 
 # ── CLASSES ──────────────────────────────────────────────────
 
@@ -260,21 +290,53 @@ ENEMIES_BY_TIER = {
 
 BOSSES = [
     {"name": "Skaven Warlord Gnawlitch", "hp": 160, "atk": 19, "dfn": 8, "xp": 130, "gold": (55, 90),
-     "abilities": ["frenzy", "poison"], "taunt": "Yes-yes! You die-die, man-thing!"},
+     "abilities": ["frenzy", "poison"], "taunt": "Yes-yes! You die-die, man-thing!",
+     "intro": [
+         "Warpstone braziers burn green as Gnawlitch emerges from the smoke.",
+         "A horn blast echoes below, answered by frantic chittering in the dark.",
+     ]},
     {"name": "Orc Warboss Grimjaw", "hp": 190, "atk": 22, "dfn": 10, "xp": 150, "gold": (65, 100),
-     "abilities": ["frenzy", "heavy"], "taunt": "WAAAGH! I'z gonna krump ya good!"},
+     "abilities": ["frenzy", "heavy"], "taunt": "WAAAGH! I'z gonna krump ya good!",
+     "intro": [
+         "A battered war-drum pounds as Grimjaw slams his axe against his shield.",
+         "Trophies of broken helms hang from iron spikes around the chamber.",
+     ]},
     {"name": "Necromancer Aldric the Pale", "hp": 110, "atk": 16, "dfn": 6, "xp": 140, "gold": (60, 95),
-     "abilities": ["regen", "fear", "poison"], "taunt": "Rise, my servants! Feast upon the living!"},
+     "abilities": ["regen", "fear", "poison"], "taunt": "Rise, my servants! Feast upon the living!",
+     "intro": [
+         "Candles ignite one by one as Aldric raises a blackened staff.",
+         "The dead stir in niches along the walls, jaws clattering in hunger.",
+     ]},
     {"name": "Chaos Sorcerer Vorath", "hp": 130, "atk": 20, "dfn": 9, "xp": 160, "gold": (70, 110),
-     "abilities": ["frenzy", "fear"], "taunt": "The Dark Gods grant me power beyond your comprehension!"},
+     "abilities": ["frenzy", "fear"], "taunt": "The Dark Gods grant me power beyond your comprehension!",
+     "intro": [
+         "Blue fire dances between Vorath's fingers in impossible geometric patterns.",
+         "A circle of runes rotates slowly underfoot, humming with corrupted power.",
+     ]},
     {"name": "Vampire Lord Mannfried", "hp": 170, "atk": 24, "dfn": 12, "xp": 190, "gold": (85, 130),
-     "abilities": ["regen", "fear", "frenzy"], "taunt": "You dare enter my domain, mortal? Your blood shall be my wine."},
+     "abilities": ["regen", "fear", "frenzy"], "taunt": "You dare enter my domain, mortal? Your blood shall be my wine.",
+     "intro": [
+         "Silk curtains stir though there is no breeze, and Mannfried smiles from a throne of bones.",
+         "Crystal goblets filled with dark blood line a banquet table set for no living guests.",
+     ]},
     {"name": "Greater Daemon of Tzeentch", "hp": 250, "atk": 28, "dfn": 14, "xp": 250, "gold": (100, 160),
-     "abilities": ["frenzy", "regen", "fear", "poison"], "taunt": "All is dust. All is change. You are nothing."},
+     "abilities": ["frenzy", "regen", "fear", "poison"], "taunt": "All is dust. All is change. You are nothing.",
+     "intro": [
+         "Reality ripples as feathered limbs unfold from a tear in the air.",
+         "Voices speak in reverse around you, each one promising your end.",
+     ]},
     {"name": "Vermin Lord Screechak", "hp": 220, "atk": 26, "dfn": 11, "xp": 230, "gold": (95, 150),
-     "abilities": ["frenzy", "poison", "fear"], "taunt": "The Horned Rat sees-smells your fear, yes-yes!"},
+     "abilities": ["frenzy", "poison", "fear"], "taunt": "The Horned Rat sees-smells your fear, yes-yes!",
+     "intro": [
+         "The chamber floor crawls with lesser skaven that scatter before their master.",
+         "Screechak towers over you, horns scraping ancient stone.",
+     ]},
     {"name": "Wight King Krell", "hp": 200, "atk": 25, "dfn": 15, "xp": 220, "gold": (90, 145),
-     "abilities": ["fear", "heavy", "frenzy"], "taunt": "..."},
+     "abilities": ["fear", "heavy", "frenzy"], "taunt": "...",
+     "intro": [
+         "Dust falls from Krell's armour as he rises, sword held in both hands.",
+         "The temperature drops; your breath fogs in the dead king's presence.",
+     ]},
 ]
 
 # ── ITEMS ────────────────────────────────────────────────────
@@ -328,6 +390,24 @@ AMBIENT_TOWN = [
     co("  ~ Heavy grey clouds promise more rain before dawn.", C.CYN),
 ]
 
+WORLD_TIMES = ["Dawn", "Morning", "Noon", "Dusk", "Night", "Midnight"]
+WORLD_WEATHER = [
+    "Cold rain lashes the rooftops.",
+    "A wet mist clings to the streets.",
+    "A biting wind sweeps in from the north.",
+    "Clear skies reveal Morrslieb's sickly glow.",
+    "Heavy clouds gather over the town walls.",
+    "A pale drizzle turns the streets to mud.",
+]
+WORLD_OMENS = [
+    "Temple bells toll without warning.",
+    "Ravens gather above the old watchtower.",
+    "Witch Hunters inspect wagons at the gate.",
+    "Flagellants preach doom by torchlight.",
+    "A green-tinted moonlight stains the cobbles.",
+    "No omen troubles the town this hour.",
+]
+
 AMBIENT_DUNGEON = [
     co("  ~ Water drips from the ceiling in a maddening rhythm.", C.GRY),
     co("  ~ A distant shriek echoes through the darkness.", C.GRY),
@@ -362,6 +442,77 @@ AMBIENT_DEEP = [
     co("  ~ You feel eyes upon you from every shadow.", C.RED),
 ]
 
+DUNGEON_DEPTH_MOODS = [
+    (1, "Stale air and old stone. The upper ruins still remember mortal hands."),
+    (6, "The masonry grows older. Symbols of lost cults scar the walls."),
+    (11, "The dark is thicker here, and every sound travels too far."),
+    (16, "Warp-taint clings to the floor like frost. Your torch burns uneasy."),
+    (21, "You have entered places that should not exist beneath Ubersreik."),
+]
+
+ROOM_AMBIENCE = {
+    "Narrow Corridor": [
+        "The passage squeezes tight; your shoulders brush damp stone.",
+        "Arrow slits in the wall suggest this hall once held a defensive line.",
+    ],
+    "Vaulted Chamber": [
+        "Your footsteps echo up into darkness you cannot see.",
+        "A cracked dome overhead bears faded imperial frescoes.",
+    ],
+    "Ancient Crypt": [
+        "Dust-coated sarcophagi line the walls in perfect silence.",
+        "Old funerary masks watch you from shattered alcoves.",
+    ],
+    "Flooded Passage": [
+        "Cold black water laps around your boots.",
+        "Ripples spread for no reason in the darkness ahead.",
+    ],
+    "Collapsed Hall": [
+        "Broken pillars and fallen stone force a careful route.",
+        "You smell old dust and recently shifted rubble.",
+    ],
+    "Eldritch Library": [
+        "Rotted shelves hold books bound in skin and tarnished brass.",
+        "Half-burned parchments whisper when the draft catches them.",
+    ],
+    "Fungal Cavern": [
+        "Pale mushrooms pulse faintly, feeding on rot and damp.",
+        "Spores drift in the torchlight like ash from a distant pyre.",
+    ],
+    "Torture Chamber": [
+        "Rusty hooks sway gently as if disturbed moments ago.",
+        "Iron instruments are laid out with ritual precision.",
+    ],
+    "Ossuary": [
+        "Skulls are stacked in neat walls, each staring sightlessly outward.",
+        "The floor crunches with powdered bone underfoot.",
+    ],
+    "Shrine Room": [
+        "An old altar stands cracked, symbols chiselled away in hatred.",
+        "Candles burn despite the stale air and lack of attendants.",
+    ],
+    "Abandoned Mine": [
+        "Old rails vanish into a collapsed tunnel mouth.",
+        "Pickaxes lie where miners dropped them long ago.",
+    ],
+    "Sewer Junction": [
+        "Filth gathers in stagnant channels cut through the stone.",
+        "The stench is overpowering, and something splashes nearby.",
+    ],
+    "Ritual Circle": [
+        "Dried blood marks a circle carved with forbidden sigils.",
+        "Wax and ash suggest recent ceremonies were performed here.",
+    ],
+    "Armoury": [
+        "Weapon racks stand empty except for rust and broken hafts.",
+        "A cracked shield bears the faded griffon of a long-dead regiment.",
+    ],
+    "Catacombs": [
+        "The tunnel splits into rows of burial niches and sunken vaults.",
+        "Grave dust and cold air cling to your lungs.",
+    ],
+}
+
 # ── LORE ENTRIES ─────────────────────────────────────────────
 
 LORE = [
@@ -389,6 +540,34 @@ LORE = [
      "Following the Great War against Chaos, the High Elf mage Teclis founded the Colleges of Magic in Altdorf. Eight colleges, one for each Wind of Magic, train human wizards. The Bright College harnesses Aqshy and is known for its destructive fire magic."),
     ("Greenskin WAAAGH!",
      "When an Orc Warboss grows powerful enough, he calls a WAAAGH! — a great migration of war that sweeps across the land. Orcs and Goblins flock to the banner, drawn by the promise of fighting. A WAAAGH! can threaten entire nations and has toppled kingdoms."),
+    ("The Cult of Ulric",
+     "In Middenheim, many still worship Ulric, god of winter, wolves, and battle. Ulricans disdain weakness and prize strength proven in hardship. Though rivalry with Sigmar's church runs deep, both faiths stand against Chaos when the north burns."),
+    ("Nagash, Great Necromancer",
+     "Nagash, once a priest-king of Nehekhara, mastered death magic so thoroughly that all necromancy bends toward his will. Even in ruin and apparent death, his influence reaches across centuries. Graveyards grow restless where his name is spoken."),
+    ("Bretonnian Grail Knights",
+     "In Bretonnia, noble knights quest for the blessing of the Lady of the Lake. Those who drink from the Grail return changed: stronger, purer, and touched by divine purpose. Their charge has broken hosts of Orcs, Beastmen, and worse."),
+    ("The Black Fire Pass",
+     "Black Fire Pass is the blood-stained gate between the Empire and the Worlds Edge Mountains. Dwarfs and men have stood together there against countless invasions. Its stones remember every oath, every betrayal, and every last stand."),
+    ("The Drakwald Forest",
+     "The Drakwald is an ancient forest where Beastmen tribes gather beneath twisted boughs. Roads vanish, patrols disappear, and moonlit clearings become slaughter grounds. Lumber camps burn as soon as they are built."),
+    ("The Orders of Knights Panther",
+     "The Knights Panther trace their origin to crusades against Araby. Proud and severe, they uphold chivalric codes in service to the Empire. Their white cloaks have become a symbol of retribution against raiders and cultists alike."),
+    ("Skaven Clan Skryre",
+     "Clan Skryre thrives on warpstone engineering: doomwheels, poison wind globes, and unstable cannons that are as lethal to allies as enemies. Their warlock engineers care little for casualties so long as destruction is spectacular."),
+    ("The Doom of Mordheim",
+     "Mordheim, once a prosperous city, was shattered when a twin-tailed comet struck in 1999 IC. Warpstone rained across its streets, and warbands soon descended to claim it. Those who survive the City of the Damned rarely remain sane."),
+    ("The Moot and the Halflings",
+     "The Mootland is home to the Empire's Halflings, famed for hospitality, archery, and improbable bravery when cornered. Their militias are underestimated at great peril. Even Elector Counts mind their alliances with the Moot."),
+    ("The Graue Familie",
+     "Wizards of the Grey College practice the subtle arts of Ulgu, the Lore of Shadow. Illusion, misdirection, and careful observation are their tools. In courts and battlefields alike, Grey Wizards wage wars without ever being seen."),
+    ("The Beastmen Brayherds",
+     "Beastmen gather in brayherds led by brutal Beastlords and foul shamans. They strike from forests and ruins, destroying shrines, farms, and roadwatch towers. Their hatred of civilization is primal and absolute."),
+    ("The Karaz Ankor",
+     "The Dwarf holds of the Worlds Edge Mountains are collectively known as the Karaz Ankor, the Everlasting Realm. Though diminished from ancient glory, each hold remains a fortress of craft, memory, and grudges waiting to be paid."),
+    ("The Reiksguard",
+     "The Reiksguard are among the Empire's most elite knights, sworn directly to the Emperor. In gleaming plate and disciplined ranks, they form the steel spine of imperial campaigns. Their standards are never lowered in retreat."),
+    ("The Horned Rat",
+     "The Skaven worship the Horned Rat, a cruel god of disease, treachery, and ravenous ambition. Its priests spread corruption from the shadows, and its blessings are always double-edged. In Skaven society, betrayal is a form of devotion."),
 ]
 
 # ── TAVERN RUMORS ────────────────────────────────────────────
@@ -408,6 +587,29 @@ RUMORS = [
     "The river ran red for a day last month. Nobody knows why, and nobody wants to.",
     "A knight of the Blazing Sun rode through — heading north. He looked... frightened.",
     "They say if you listen at the dungeon entrance on a still night, you can hear chanting.",
+]
+
+RUMOR_CHAINS = [
+    [
+        "The watch found strange claw-marks near the granaries last night.",
+        "Those claw-marks reached the old well. No tracks led away from it.",
+        "Two rat-catchers vanished after going below the old well. Nobody speaks of it now.",
+    ],
+    [
+        "Pilgrims arrived from Middenheim with stories of fires in the Drakwald.",
+        "The pilgrims say Beastmen carry crude standards marked with a bleeding moon.",
+        "Refugees now sleep in the temple courtyard. The priests are arming acolytes.",
+    ],
+    [
+        "Dorak swears someone sold him ore that hummed in the dark.",
+        "That same ore split his anvil face clean in two.",
+        "Now Dorak keeps a loaded pistol by the forge and won't say why.",
+    ],
+    [
+        "A noble coach arrived at dusk and left before dawn with no escort.",
+        "The coachman wore mourning black and asked for directions to the catacombs.",
+        "The graveyard gates were open this morning. They were locked last night.",
+    ],
 ]
 
 ROOM_TYPES = ["Narrow Corridor", "Vaulted Chamber", "Ancient Crypt",
@@ -569,6 +771,13 @@ class Player:
         self.total_gold_earned = 0
         self.lore_found = []
         self.paragon = 0
+        self.world_day = 1
+        self.world_time_index = random.randrange(len(WORLD_TIMES))
+        self.world_weather = random.choice(WORLD_WEATHER)
+        self.world_omen = random.choice(WORLD_OMENS)
+        self.story_flags = []
+        self.rumor_progress = {}
+        self.last_expedition = {}
         # Combat transient state
         self.status_effects = []
         self.defending = False
@@ -766,6 +975,25 @@ class Player:
         self.defending = False
         self.dodge_next = False
 
+    @property
+    def world_time(self):
+        return WORLD_TIMES[self.world_time_index % len(WORLD_TIMES)]
+
+    def advance_world(self, steps=1):
+        for _ in range(max(1, steps)):
+            self.world_time_index = (self.world_time_index + 1) % len(WORLD_TIMES)
+            if self.world_time_index == 0:
+                self.world_day += 1
+                self.world_weather = random.choice(WORLD_WEATHER)
+                if random.random() < 0.6:
+                    self.world_omen = random.choice(WORLD_OMENS)
+            elif random.random() < 0.25:
+                self.world_omen = random.choice(WORLD_OMENS)
+
+    def set_story_flag(self, flag):
+        if flag and flag not in self.story_flags:
+            self.story_flags.append(flag)
+
     # ── Equipment ─────────────────────────────────────────────
     def equip(self, item):
         old = self.equipment[item.slot]
@@ -797,6 +1025,13 @@ class Player:
             "total_gold_earned": self.total_gold_earned,
             "lore_found": self.lore_found,
             "paragon": self.paragon,
+            "world_day": self.world_day,
+            "world_time_index": self.world_time_index,
+            "world_weather": self.world_weather,
+            "world_omen": self.world_omen,
+            "story_flags": self.story_flags,
+            "rumor_progress": self.rumor_progress,
+            "last_expedition": self.last_expedition,
             "version": VERSION,
         }
 
@@ -819,6 +1054,13 @@ class Player:
         p.total_gold_earned = d.get("total_gold_earned", 0)
         p.lore_found = d.get("lore_found", [])
         p.paragon = d.get("paragon", 0)
+        p.world_day = d.get("world_day", 1)
+        p.world_time_index = d.get("world_time_index", random.randrange(len(WORLD_TIMES)))
+        p.world_weather = d.get("world_weather", random.choice(WORLD_WEATHER))
+        p.world_omen = d.get("world_omen", random.choice(WORLD_OMENS))
+        p.story_flags = d.get("story_flags", [])
+        p.rumor_progress = d.get("rumor_progress", {})
+        p.last_expedition = d.get("last_expedition", {})
         p.hp = min(d.get("hp", p.max_hp), p.max_hp)
         p.mp = min(d.get("mp", p.max_mp), p.max_mp)
         p.status_effects = []; p.defending = False; p.dodge_next = False
@@ -830,7 +1072,7 @@ class Player:
 # ═══════════════════════════════════════════════════════════════
 
 class Enemy:
-    def __init__(self, name, hp, atk, dfn, xp, gold, abilities, depth, is_boss=False, taunt=""):
+    def __init__(self, name, hp, atk, dfn, xp, gold, abilities, depth, is_boss=False, taunt="", intro=None):
         s = 1 + (depth - 1) * 0.18
         self.name = name
         self.max_hp = int(hp * s)
@@ -842,6 +1084,7 @@ class Enemy:
         self.abilities = abilities
         self.is_boss = is_boss
         self.taunt = taunt
+        self.intro = intro or []
         self.status_effects = []
         self.frenzy_active = False
         self.depth = depth
@@ -919,7 +1162,7 @@ def make_boss(depth):
     extra_scale = 1 + max(0, (depth // 5) - len(BOSSES)) * 0.25
     return Enemy(b["name"], int(b["hp"] * extra_scale), int(b["atk"] * extra_scale),
                  b["dfn"], int(b["xp"] * extra_scale), b["gold"],
-                 list(b["abilities"]), depth, is_boss=True, taunt=b["taunt"])
+                 list(b["abilities"]), depth, is_boss=True, taunt=b["taunt"], intro=b.get("intro", []))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1267,11 +1510,18 @@ class Dungeon:
         rooms.append({"type": "Boss Chamber", "event": boss_event, "index": n + 1})
         return rooms
 
-    def _show_dungeon_status(self):
+    def _show_dungeon_status(self, room_type=""):
         print(f"  {co(self.p.name, C.BGRN)} — Lvl {self.p.level}  |  {co(f'Depth {self.depth}', C.BYEL)}  |  Room {self.current_room + 1}/{len(self.rooms)}")
         print(f"  HP: {hp_bar(self.p.hp, self.p.max_hp)}")
         print(f"  MP: {mp_bar(self.p.mp, self.p.max_mp)}")
+        print(f"  {co('Depth Mood:', C.BRED)} {co(get_depth_mood(self.depth), C.GRY)}")
+        print(f"  {co('Time Below:', C.CYN)} {co(f'Day {self.p.world_day}, {self.p.world_time}', C.GRY)}")
         sep()
+        room_lines = ROOM_AMBIENCE.get(room_type, [])
+        if room_lines:
+            print(co(f"  ~ {random.choice(room_lines)}", C.GRY))
+        else:
+            print(co("  ~ The stone remembers old blood and older oaths.", C.GRY))
         if self.depth >= 15:
             print(random.choice(AMBIENT_DEEP))
         else:
@@ -1295,7 +1545,7 @@ class Dungeon:
             clr()
             hdr(f"DEPTH {self.depth} — {room['type'].upper()}", C.BRED)
             print()
-            self._show_dungeon_status()
+            self._show_dungeon_status(room["type"])
             print()
             wrap(f"You enter a {room['type'].lower()}...", C.WHT)
             print()
@@ -1362,6 +1612,10 @@ class Dungeon:
         hdr(f"⚔  BOSS: {boss.name.upper()}  ⚔", C.BYEL)
         print()
         wrap(f"A massive presence fills the chamber. {boss.name} bars your path!", C.BRED)
+        if boss.intro:
+            wrap(random.choice(boss.intro), C.MAG)
+        if self.depth >= 20:
+            wrap("The stones tremble with distant chanting as if the dungeon itself is watching.", C.RED)
         print()
         pause("Press Enter to face the boss...")
         result = Combat(self.p, boss).run()
@@ -1448,9 +1702,8 @@ class Dungeon:
 
         # Lore drop
         if random.random() < 0.15:
-            undiscovered = [l for l in LORE if l[0] not in self.p.lore_found]
-            if undiscovered:
-                entry = random.choice(undiscovered)
+            entry = pick_lore_entry(self.p, self.depth)
+            if entry:
                 self.p.lore_found.append(entry[0])
                 self.lore_found_this_run.append(entry)
                 print(f"\n  {co('📜 Lore Discovered:', C.BCYN)} {co(entry[0], C.CYN)}")
@@ -1614,22 +1867,24 @@ class Dungeon:
                     print(co("  'The boss ahead is weak to... persistent attacks. Don't give up.'", C.CYN))
                     self.p.status_effects.append({"name": "Soldier's Insight", "turns": 15, "damage_bonus": 0.1})
                     print(co("  +10% damage for this depth!", C.CYN))
+                    self.p.set_story_flag("heard_soldier_warning")
                 else:
                     item = generate_item(self.depth, rarity="Uncommon")
                     print(f"  'Take my {item.display_name()}. I won't need it where I'm going.'")
                     if len(self.p.inventory) < 20:
                         self.p.inventory.append(item)
+                self.p.set_story_flag("helped_wounded_soldier")
             else:
                 print(co("  You have no potions to spare.", C.RED))
         else:
             print(co("  You leave the soldier behind. His eyes follow you into the dark.", C.GRY))
+            self.p.set_story_flag("left_wounded_soldier")
         pause()
         return "continue"
 
     def _event_lore_stone(self):
-        undiscovered = [l for l in LORE if l[0] not in self.p.lore_found]
-        if undiscovered:
-            entry = random.choice(undiscovered)
+        entry = pick_lore_entry(self.p, self.depth)
+        if entry:
             self.p.lore_found.append(entry[0])
             self.lore_found_this_run.append(entry)
             wrap("You discover ancient text carved into a standing stone...", C.CYN)
@@ -1670,14 +1925,17 @@ class Dungeon:
             self.p.gold += g
             self.p.total_gold_earned += g
             print(co(f"  'Bless you! Here, take this!' (+{g} gold)", C.GRN))
+            self.p.set_story_flag("escorted_lost_traveller")
         elif ch == 1:
             print(co("  'Thank you, stranger. May Sigmar protect you.'", C.GRY))
             # Small chance of a bonus
             if random.random() < 0.3:
                 print(co("  He leaves behind a small pouch of coins.", C.YEL))
                 self.p.gold += 15
+            self.p.set_story_flag("guided_lost_traveller")
         else:
             print(co("  You walk past. His sobbing fades behind you.", C.GRY))
+            self.p.set_story_flag("ignored_lost_traveller")
         pause()
         return "continue"
 
@@ -1727,6 +1985,14 @@ class Dungeon:
         if self.lore_found_this_run:
             print(f"  Lore discovered: {co(str(len(self.lore_found_this_run)), C.CYN)}")
         sep()
+        self.p.last_expedition = {
+            "depth": self.depth,
+            "outcome": "Cleared" if cleared else ("Defeat" if not self.p.is_alive() else "Retreated"),
+            "kills": self.kills,
+            "gold": self.gold_found,
+            "items": len(self.items_found),
+            "lore": len(self.lore_found_this_run),
+        }
         pause()
         self.p.status_effects = []
         self.p.defending = False
@@ -1742,6 +2008,37 @@ class Town:
     def __init__(self, player):
         self.p = player
 
+    def _town_notices(self):
+        notices = []
+        if "helped_wounded_soldier" in self.p.story_flags:
+            notices.append("A recovered soldier is seen lighting a candle for you at the temple.")
+        if "left_wounded_soldier" in self.p.story_flags:
+            notices.append("Whispers in the tavern speak of a dying soldier in the lower halls.")
+        if "escorted_lost_traveller" in self.p.story_flags:
+            notices.append("A merchant has posted your description with a note of thanks in the market.")
+        if "ignored_lost_traveller" in self.p.story_flags:
+            notices.append("Gatewardens mutter about another traveller missing in the underways.")
+        return notices
+
+    def _town_ambient_line(self):
+        pool = list(AMBIENT_TOWN)
+        notices = self._town_notices()
+        if notices:
+            pool.append(co(f"  ~ {random.choice(notices)}", C.CYN))
+        return random.choice(pool)
+
+    def _next_rumor(self):
+        if RUMOR_CHAINS and random.random() < 0.45:
+            idx = random.randrange(len(RUMOR_CHAINS))
+            key = str(idx)
+            stage = int(self.p.rumor_progress.get(key, 0))
+            chain = RUMOR_CHAINS[idx]
+            rumor = chain[min(stage, len(chain) - 1)]
+            if stage < len(chain) - 1:
+                self.p.rumor_progress[key] = stage + 1
+            return rumor
+        return random.choice(RUMORS)
+
     def run(self):
         while True:
             clr()
@@ -1755,8 +2052,14 @@ class Town:
             print(f"  Gold: {co(str(self.p.gold), C.YEL)}  |  Max Depth: {co(str(self.p.max_depth_cleared), C.BRED)}")
             if self.p.level < 25:
                 print(f"  XP: {xp_bar(self.p.xp, self.p.xp_to_level)}")
+            print(f"  {co('Town Status:', C.BYEL)} Day {self.p.world_day}, {self.p.world_time} | {self.p.world_weather}")
+            print(f"  {co('Omen:', C.MAG)} {self.p.world_omen}")
+            if self.p.last_expedition:
+                le = self.p.last_expedition
+                print(f"  {co('Last Expedition:', C.CYN)} Depth {le.get('depth', '?')} | {le.get('outcome', 'Unknown')} | "
+                      f"Kills {le.get('kills', 0)} | Lore {le.get('lore', 0)}")
             sep()
-            print(random.choice(AMBIENT_TOWN))
+            print(self._town_ambient_line())
             sep()
             print()
 
@@ -1818,20 +2121,21 @@ class Town:
                 if self.p.gold >= cost:
                     self.p.gold -= cost
                     self.p.full_heal()
+                    self.p.advance_world(1)
                     print(co("\n  You rest by the fire. Wounds mend. Strength returns.", C.GRN))
                     print(co("  Fully healed!", C.BGRN))
                 else:
                     print(co("\n  'No coin, no bed!' Otto growls.", C.RED))
             elif ch == 1:
-                rumor = random.choice(RUMORS)
+                rumor = self._next_rumor()
                 print(f"\n  {co('Otto leans in:', C.YEL)} \"{co(rumor, C.CYN)}\"")
             elif ch == 2:
                 if self.p.gold >= 25:
                     self.p.gold -= 25
+                    self.p.advance_world(1)
                     print(co("\n  The tavern erupts in cheers! A grateful patron shares a tale...", C.YEL))
-                    undiscovered = [l for l in LORE if l[0] not in self.p.lore_found]
-                    if undiscovered:
-                        entry = random.choice(undiscovered)
+                    entry = pick_lore_entry(self.p, max(1, self.p.max_depth_cleared))
+                    if entry:
                         self.p.lore_found.append(entry[0])
                         print(f"\n  {co('📜 ' + entry[0], C.BCYN)}")
                         wrap(entry[1], C.CYN)
@@ -2387,7 +2691,8 @@ class Game:
 
         depth = max(1, max_available - 4) + ch
         dungeon = Dungeon(self.player, depth)
-        cleared = dungeon.run()
+        dungeon.run()
+        self.player.advance_world(1)
 
         # Auto-save after dungeon
         self.save_game()
