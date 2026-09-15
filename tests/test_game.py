@@ -41,7 +41,7 @@ class GameTests(unittest.TestCase):
         self.assertEqual(len(self.p.status_effects), 1)
 
     def finish(self, dungeon, cleared):
-        with patch.object(game, 'clr'), patch.object(game, 'pause'), patch.object(game, 'get_choice', return_value=3), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(game, 'clr'), patch.object(game, 'pause'), patch.object(game, 'get_choice', return_value=len(game.RELICS)), contextlib.redirect_stdout(io.StringIO()):
             return dungeon._end_run(cleared)
 
     def test_defeat_is_recorded_after_revival(self):
@@ -195,40 +195,8 @@ class AdventureTests(unittest.TestCase):
         self.assertEqual(self.combat.turn, 0)
         self.assertEqual(self.p.hp, self.p.max_hp)
 
-    def test_campaign_flow_rewards_and_reload(self):
-        choices = [None, 'courier_rescued', 'weapons_sabotaged', 'captain_trial', None]
-        with patch.object(game, 'pause'), patch.object(game, 'clr'), patch.object(game, 'get_choice', return_value=0), contextlib.redirect_stdout(io.StringIO()):
-            for depth, choice in enumerate(choices, 1):
-                dungeon = game.Dungeon(self.p, depth)
-                dungeon.chapter_choice = choice
-                dungeon._end_run(True)
-                self.assertEqual(self.p.campaign_stage, depth)
-                self.p = game.Player.from_dict(json.loads(json.dumps(self.p.to_dict())))
-            before = self.p.to_dict()
-            game.Dungeon(self.p, 5)._complete_chapter()
-            self.assertEqual(self.p.to_dict(), before)
-        self.assertIn('courier_rescued', self.p.story_flags)
-        self.assertEqual(self.p.potions['Health Potion'], 5)
-        self.assertTrue(self.p.equipment['accessory'].special.startswith('Blood Echo:'))
 
-    def test_story_failure_does_not_commit_choice(self):
-        self.p.campaign_stage = 1
-        dungeon = game.Dungeon(self.p, 2)
-        dungeon.chapter_choice = 'ledger_saved'
-        with patch.object(game, 'pause'), patch.object(game, 'clr'), contextlib.redirect_stdout(io.StringIO()):
-            dungeon._end_run(False)
-        self.assertEqual(self.p.campaign_stage, 1)
-        self.assertNotIn('ledger_saved', self.p.story_flags)
 
-    def test_sabotage_changes_final_boss(self):
-        self.p.campaign_stage = 4
-        base = game.Dungeon(self.p, 5)._make_guardian()
-        self.p.story_flags.append('weapons_sabotaged')
-        weakened = game.Dungeon(self.p, 5)._make_guardian()
-        self.assertLess(weakened.atk, base.atk)
-        self.p.story_flags = ['seal_broken']
-        weakened = game.Dungeon(self.p, 5)._make_guardian()
-        self.assertLess(weakened.max_hp, base.max_hp)
 
     def test_real_combat_loop_all_classes(self):
         for cls in game.CLASSES:
@@ -241,20 +209,12 @@ class AdventureTests(unittest.TestCase):
                 self.assertEqual(combat.run(), 'victory')
             self.assertGreater(player.hp, 0)
 
-    def test_old_high_depth_save_can_select_story(self):
-        self.p.max_depth_cleared = 20
-        app = game.Game()
-        app.player = self.p
-        with patch.object(game, 'get_choice', return_value=0), patch.object(game, 'clr'), patch.object(game.Dungeon, 'run'), patch.object(app, 'save_game'), contextlib.redirect_stdout(io.StringIO()):
-            with patch.object(game, 'Dungeon', wraps=game.Dungeon) as dungeon:
-                app._enter_dungeon()
-                self.assertEqual(dungeon.call_args.args[1], 1)
 
     def test_old_save_and_full_inventory(self):
         data = self.p.to_dict()
         data.pop('campaign_stage')
         self.assertEqual(game.Player.from_dict(data).campaign_stage, 0)
-        self.p.campaign_stage = 1
+        self.p.max_depth_cleared = 1
         self.p.inventory = [game.generate_item(1) for _ in range(20)]
         self.p.equip(game.Item('Old ring', 'accessory', 'Common', 1))
         with contextlib.redirect_stdout(io.StringIO()):

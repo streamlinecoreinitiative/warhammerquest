@@ -622,8 +622,72 @@ ROOM_TYPES = ["Narrow Corridor", "Vaulted Chamber", "Ancient Crypt",
 #  ITEM SYSTEM
 # ═══════════════════════════════════════════════════════════════
 
+EQUIPMENT_SETS = {
+    "ironwarden": {"name": "Ironwarden", "two": "+8% block", "three": "defending heals 3% max HP", "pieces": ("Watchhammer", "Bastion Plate", "Bulwark Seal")},
+    "ember": {"name": "Ember Covenant", "two": "skills cost 3 less MP", "three": "+25% skill damage", "pieces": ("Cinderblade", "Ashweave Robes", "Aqshy Lens")},
+    "thorn": {"name": "Thornstalker", "two": "+8% dodge", "three": "basic attacks inflict 2-turn bleed (12% attack power/turn)", "pieces": ("Briar Spear", "Bramble Leather", "Wildwood Charm")},
+    "reaver": {"name": "Blood Reaver", "two": "+8% critical chance", "three": "direct attacks heal 6% of HP removed", "pieces": ("Gorecleaver", "Crimson Mail", "Bloodfang Torc")},
+}
+
+# Each zone spans five depths. Later circuits retain depth scaling and add corruption.
+ZONES = [
+    {"name": "Vermin Warrens", "family": "skaven", "set": "thorn", "boss": 0,
+     "lore": "Clan burrows carry stolen supplies below. Their warlord controls the only descending shaft.",
+     "old": ["Skaven Clanrat", "Night Goblin", "Giant Spider", "Bat Swarm", "Rat Ogre"],
+     "mobs": [("Tunnel Stalker", 32, 8, 1, ["bleed"]), ("Warp Leech", 26, 7, 0, ["drain"]), ("Clan Shieldbearer", 40, 7, 5, ["sunder"]), ("Brood Spider", 35, 8, 2, ["poison", "slow"])]},
+    {"name": "Broken Forges", "family": "greenskin", "set": "ironwarden", "boss": 1,
+     "lore": "Greenskins feed stolen steel into ancient furnaces. Break their warboss to open the lift.",
+     "old": ["Orc Boy", "Black Orc", "Stormvermin"],
+     "mobs": [("Forge Brute", 60, 13, 6, ["heavy"]), ("Chain Wrecker", 52, 12, 4, ["sunder", "heavy"]), ("Cinder Squig", 42, 14, 2, ["bleed", "frenzy"]), ("Slag Shaman", 45, 11, 3, ["drain"])]},
+    {"name": "Sepulchral Halls", "family": "undead", "set": "reaver", "boss": 2,
+     "lore": "A stolen bell wakes the dead. Its keeper must fall before the lower tombs can be reached.",
+     "old": ["Shambling Zombie", "Skeleton Warrior", "Crypt Ghoul", "Cairn Wraith", "Wight King", "Vampire Thrall"],
+     "mobs": [("Grave Sentinel", 68, 14, 9, ["sunder"]), ("Blood Spectre", 56, 14, 4, ["drain", "fear"]), ("Ossuary Hound", 58, 15, 3, ["bleed"]), ("Corpse Tender", 65, 12, 5, ["regen", "poison"])]},
+    {"name": "Rootbound Deeps", "family": "beastmen", "set": "thorn", "boss": 7,
+     "lore": "Roots split buried tombs. A crowned guardian feeds the wild growth with trespassers' blood.",
+     "old": ["Ungor Raider", "Gor", "Bestigor", "Minotaur", "Crypt Horror"],
+     "mobs": [("Briar Gor", 75, 16, 5, ["bleed", "frenzy"]), ("Spore Seer", 60, 14, 4, ["poison", "drain"]), ("Rootbound Giant", 100, 17, 7, ["heavy", "regen"]), ("Thornhide Hunter", 70, 16, 8, ["sunder", "bleed"])]},
+    {"name": "Warpfire Sanctum", "family": "chaos", "set": "ember", "boss": 3,
+     "lore": "Aqshy burns through broken wards. The sorcerer at the gate twists every spell cast below.",
+     "old": ["Chaos Marauder", "Chaos Warrior", "Chaos Chosen", "Poison Wind Globadier"],
+     "mobs": [("Ashbound Acolyte", 78, 18, 5, ["drain", "fear"]), ("Rune Breaker", 95, 20, 10, ["sunder", "heavy"]), ("Flame Mutant", 88, 19, 6, ["regen", "frenzy"]), ("Warpglass Assassin", 70, 21, 4, ["bleed", "drain"])]},
+    {"name": "The Black Abyss", "family": "chaos", "set": "reaver", "boss": 5,
+     "lore": "Reality frays around a daemon's throne. Beyond it, another layer of buried kingdoms waits.",
+     "old": ["Chaos Troll", "Hellpit Abomination", "Chaos Chosen", "Vampire Thrall"],
+     "mobs": [("Abyssal Reaver", 110, 22, 9, ["bleed", "heavy"]), ("Soul Devourer", 100, 21, 8, ["drain", "regen"]), ("Dread Herald", 105, 20, 10, ["fear", "sunder"]), ("Many-Mouthed Horror", 125, 23, 7, ["poison", "bleed", "regen"])]},
+]
+
+DEPTH_CONDITIONS = [
+    {"name": "Still Air", "desc": "No additional hazard.", "attack": 1.0, "xp": 1.0, "gold": 1.0, "mana": 1.0, "camp": 0.4},
+    {"name": "Blood Moon", "desc": "Enemies deal 15% more damage; enemies yield 20% more gold.", "attack": 1.15, "xp": 1.0, "gold": 1.2, "mana": 1.0, "camp": 0.4},
+    {"name": "Warp Surge", "desc": "Skills cost 20% less MP; enemies deal 10% more damage.", "attack": 1.1, "xp": 1.0, "gold": 1.0, "mana": 0.8, "camp": 0.4},
+    {"name": "Sapping Cold", "desc": "Camp restores only 25% MP; enemies yield 20% more XP.", "attack": 1.0, "xp": 1.2, "gold": 1.0, "mana": 1.0, "camp": 0.25},
+]
+
+
+def zone_for_depth(depth):
+    return ZONES[((max(1, depth) - 1) // 5) % len(ZONES)]
+
+
+def corruption_at(depth):
+    return (max(1, depth) - 1) // (5 * len(ZONES))
+
+
+def condition_for_depth(depth):
+    if depth <= 5:
+        return DEPTH_CONDITIONS[0]
+    band = (depth - 1) // 5
+    return DEPTH_CONDITIONS[1 + (band - 1 + corruption_at(depth)) % 3]
+
+
+def depth_description(depth):
+    zone = zone_for_depth(depth)
+    condition = condition_for_depth(depth)
+    return f"{zone['name']} | Corruption {corruption_at(depth)} | {condition['name']}: {condition['desc']} | Guardian set: {EQUIPMENT_SETS[zone['set']]['name']}"
+
+
 class Item:
-    def __init__(self, name, slot, rarity, level, damage=0, defense=0, bonus_stats=None, special=""):
+    def __init__(self, name, slot, rarity, level, damage=0, defense=0, bonus_stats=None, special="", set_id=""):
         self.name = name
         self.slot = slot  # weapon, armor, accessory
         self.rarity = rarity
@@ -632,6 +696,7 @@ class Item:
         self.defense = defense
         self.bonus_stats = bonus_stats or {}
         self.special = special
+        self.set_id = set_id
 
     def display_name(self):
         c = RC.get(self.rarity, C.WHT)
@@ -647,6 +712,9 @@ class Item:
             parts.append(co(f"{s.upper()} +{v}", C.GRN))
         if self.special:
             parts.append(co(self.special, C.CYN))
+        if self.set_id in EQUIPMENT_SETS:
+            spec = EQUIPMENT_SETS[self.set_id]
+            parts.append(co(f"Set {spec['name']}: 2 pieces {spec['two']}; 3 pieces {spec['three']}", C.BYEL))
         return " | ".join(parts) if parts else co("No stats", C.GRY)
 
     def power_score(self):
@@ -655,13 +723,13 @@ class Item:
     def to_dict(self):
         return {"name": self.name, "slot": self.slot, "rarity": self.rarity,
                 "level": self.level, "damage": self.damage, "defense": self.defense,
-                "bonus_stats": self.bonus_stats, "special": self.special}
+                "bonus_stats": self.bonus_stats, "special": self.special, "set_id": self.set_id}
 
     @staticmethod
     def from_dict(d):
         return Item(d["name"], d["slot"], d["rarity"], d["level"],
                     d.get("damage", 0), d.get("defense", 0),
-                    d.get("bonus_stats", {}), d.get("special", ""))
+                    d.get("bonus_stats", {}), d.get("special", ""), d.get("set_id", ""))
 
 
 def roll_rarity(depth):
@@ -678,7 +746,7 @@ def roll_rarity(depth):
     return "Common"
 
 
-def generate_item(depth, rarity=None, slot=None):
+def _generate_base_item(depth, rarity=None, slot=None):
     if rarity is None:
         rarity = roll_rarity(depth)
     if slot is None:
@@ -702,7 +770,7 @@ def generate_item(depth, rarity=None, slot=None):
             s2 = random.choice(["crit", "str", "agi", "int", "wil"])
             bonus[s2] = bonus.get(s2, 0) + int((1 + depth * 0.2) * rm * random.uniform(0.8, 1.2))
         special = ""
-        if rarity == "Legendary":
+        if rarity == "Legendary" or (rarity in ("Rare", "Epic") and random.random() < 0.2):
             special = random.choice(["Cleave: +15% DMG", "Lifesteal: 8%", "Sigmar's Light: +10% vs Undead",
                                      "Runic: +5% Crit", "+20% vs Chaos"])
         return Item(name, "weapon", rarity, depth, damage=dmg, bonus_stats=bonus, special=special)
@@ -721,7 +789,7 @@ def generate_item(depth, rarity=None, slot=None):
             s2 = random.choice(["tou", "wil", "hp"])
             bonus[s2] = bonus.get(s2, 0) + int((1 + depth * 0.2) * rm * random.uniform(0.8, 1.2))
         special = ""
-        if rarity == "Legendary":
+        if rarity == "Legendary" or (rarity in ("Rare", "Epic") and random.random() < 0.2):
             special = random.choice(["Gromril-forged: +10% Block", "Ward Save: 8%",
                                      "Regeneration: +3 HP/turn", "Thorns: Reflect 5 DMG"])
         return Item(name, "armor", rarity, depth, defense=dfn, bonus_stats=bonus, special=special)
@@ -738,12 +806,29 @@ def generate_item(depth, rarity=None, slot=None):
             s = random.choice(stats_pool)
             bonus[s] = bonus.get(s, 0) + int((1 + depth * 0.35) * rm * random.uniform(0.8, 1.2))
         special = ""
-        if rarity == "Legendary":
+        if rarity == "Legendary" or (rarity in ("Rare", "Epic") and random.random() < 0.2):
             special = random.choice(["+10% XP Gain", "+15% Gold Find", "Lucky: +8% Item Rarity",
                                      "+5% All Resists", "Swift: +10% Dodge"])
         dmg = int((1 + depth * 0.5) * rm * random.uniform(0.8, 1.2)) if rarity in ("Epic", "Legendary") else 0
         dfn = int((1 + depth * 0.3) * rm * random.uniform(0.8, 1.2)) if rarity in ("Rare", "Epic", "Legendary") else 0
         return Item(name, "accessory", rarity, depth, damage=dmg, defense=dfn, bonus_stats=bonus, special=special)
+
+
+def generate_item(depth, rarity=None, slot=None, set_id=None):
+    if set_id is not None and set_id not in EQUIPMENT_SETS:
+        raise ValueError("Unknown equipment set")
+    if set_id and rarity not in ("Rare", "Epic", "Legendary"):
+        rarity = "Rare"
+    item = _generate_base_item(depth, rarity=rarity, slot=slot)
+    if set_id is None and depth >= 5 and item.rarity in ("Rare", "Epic", "Legendary") and random.random() < 0.35:
+        set_id = random.choice(list(EQUIPMENT_SETS))
+    if set_id:
+        item.set_id = set_id
+        spec = EQUIPMENT_SETS[set_id]
+        item.name = f"{spec['name']} {spec['pieces'][("weapon", "armor", "accessory").index(item.slot)]}"
+    elif item.slot == "accessory" and item.rarity in ("Rare", "Epic", "Legendary") and random.random() < 0.25:
+        item.name, item.special = random.choice(RELICS)
+    return item
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -787,6 +872,25 @@ class Player:
         self.hp = self.max_hp
         self.mp = self.max_mp
 
+    def set_count(self, set_id):
+        return sum(1 for item in self.equipment.values() if item and item.set_id == set_id)
+
+    def has_special(self, prefix):
+        return any(item and item.special.startswith(prefix) for item in self.equipment.values())
+
+    def set_summary(self):
+        lines = []
+        for key, spec in EQUIPMENT_SETS.items():
+            count = self.set_count(key)
+            if count:
+                bonuses = []
+                if count >= 2:
+                    bonuses.append(spec["two"])
+                if count >= 3:
+                    bonuses.append(spec["three"])
+                lines.append(f"{spec['name']} {count}/3: " + ("; ".join(bonuses) or "one more piece unlocks the first bonus"))
+        return lines
+
     # ── Derived stats ─────────────────────────────────────────
     @property
     def max_hp(self):
@@ -828,24 +932,28 @@ class Player:
         talent_def = self._talent_val("defense")
         acc_def = sum(it.defense for it in self.equipment.values() if it and it.slot == "accessory")
         effect_def = sum(e.get("defense_bonus", 0) for e in self.status_effects)
-        return base + a_def + equip_tou + talent_def + acc_def + effect_def
+        return max(0, base + a_def + equip_tou + talent_def + acc_def + effect_def)
 
     @property
     def crit_chance(self):
         base = 5 + self.stats["agi"] * 0.8
         talent = self._talent_val("crit")
         equip = sum(it.bonus_stats.get("crit", 0) for it in self.equipment.values() if it)
+        equip += 5 if self.has_special("Runic:") else 0
+        equip += 8 if self.set_count("reaver") >= 2 else 0
         return min(base + talent + equip, 75)
 
     @property
     def dodge_chance(self):
         base = self.stats["agi"] * 0.5
         talent = self._talent_val("dodge")
-        return min(base + talent, 60)
+        equip = (10 if self.has_special("Swift:") else 0) + (8 if self.set_count("thorn") >= 2 else 0)
+        return min(base + talent + equip, 60)
 
     @property
     def block_chance(self):
-        return min(self._talent_val("block"), 50)
+        equip = (10 if self.has_special("Gromril-forged:") else 0) + (8 if self.set_count("ironwarden") >= 2 else 0)
+        return min(self._talent_val("block") + equip, 50)
 
     def _talent_val(self, stat_key):
         for t in TALENTS[self.cls]:
@@ -863,6 +971,8 @@ class Player:
                 rank = self.talents.get(t[0], 0)
                 if rank > 0:
                     total += t[2][rank - 1]
+        if key == "resist" and self.has_special("+5% All Resists"):
+            total += 5
         return total
 
     # ── XP & Level ────────────────────────────────────────────
@@ -895,7 +1005,7 @@ class Player:
 
     # ── Combat methods ────────────────────────────────────────
     def take_damage(self, raw_dmg):
-        red = self.defense / (self.defense + 50)
+        red = min(0.75, self.defense / (self.defense + 50))
         if self.defending:
             red = min(red + 0.5, 0.85)
         for e in self.status_effects:
@@ -903,6 +1013,8 @@ class Player:
                 red = min(red + e.get("value", 0.5), 0.85)
             if e["name"] in ("Flame Shield", "Ancestral Ward"):
                 red = min(red + e.get("value", 0.4), 0.85)
+        if self.has_special("Ward Save:"):
+            red = min(red + 0.08, 0.85)
         if self.dodge_next:
             self.dodge_next = False
             return 0, "dodged"
@@ -913,7 +1025,7 @@ class Player:
         actual = max(1, int(raw_dmg * (1 - red)))
         self.hp = max(0, self.hp - actual)
         # Check flame shield reflect
-        reflected = 0
+        reflected = 5 if self.has_special("Thorns:") else 0
         for e in self.status_effects:
             if e["name"] == "Flame Shield":
                 reflected += self.get_talent_bonus("reflect") + 8
@@ -925,13 +1037,17 @@ class Player:
     def restore_mp(self, amount):
         self.mp = min(self.max_mp, self.mp + int(amount))
 
-    def calc_damage(self, mult=1.0, is_magic=False, auto_crit=False, skill_key=None):
+    def calc_damage(self, mult=1.0, is_magic=False, auto_crit=False, skill_key=None, is_skill=False):
         base = self.magic_power if is_magic else self.attack_power
         bonus_pct = 0
         if skill_key:
             bonus_pct = self.get_talent_bonus(skill_key)
         status_bonus = sum(e.get("damage_bonus", 0) for e in self.status_effects)
         dmg = base * mult * (1 + bonus_pct / 100) * max(0, 1 + status_bonus)
+        if self.has_special("Cleave:"):
+            dmg *= 1.15
+        if is_skill and self.set_count("ember") >= 3:
+            dmg *= 1.25
         crit = False
         if auto_crit or random.random() * 100 < self.crit_chance:
             dmg *= 1.8
@@ -946,10 +1062,10 @@ class Player:
 
     def apply_status_tick(self):
         msgs = []
-        regen = self.get_talent_bonus("regen")
+        regen = self.get_talent_bonus("regen") + (3 if self.has_special("Regeneration:") else 0)
         if regen > 0:
             self.heal(regen)
-            msgs.append(co(f"  Nature's Grace restores {regen} HP.", C.GRN))
+            msgs.append(co(f"  Regeneration restores {regen} HP.", C.GRN))
         new_effects = []
         for e in self.status_effects:
             if e.get("dot"):
@@ -1097,9 +1213,11 @@ class Enemy:
         self.frenzy_active = False
         self.depth = depth
         self.intent = "attack"
+        self.elite = False
+        self.family = ""
 
     def take_damage(self, raw):
-        red = self.dfn / (self.dfn + 40)
+        red = min(0.75, self.dfn / (self.dfn + 40))
         stance = 0.5 if self.intent == "guard" else (1.5 if self.intent == "recover" else 1.0)
         actual = max(1, int(raw * (1 - red) * stance))
         self.hp = max(0, self.hp - actual)
@@ -1148,31 +1266,62 @@ class Enemy:
         return g
 
 
+def _apply_depth_traits(enemy, depth):
+    zone = zone_for_depth(depth)
+    enemy.family = zone["family"]
+    if any(word in enemy.name for word in ("Vampire", "Wight", "Necromancer", "Skeleton", "Crypt", "Zombie", "Wraith", "Spectre", "Corpse", "Grave")):
+        enemy.family = "undead"
+    condition = condition_for_depth(depth)
+    rank = corruption_at(depth)
+    # A bounded corruption bonus avoids quadratic stat growth; depth itself never caps.
+    corruption = 1 + rank / (rank + 4)
+    enemy.max_hp = max(1, int(enemy.max_hp * corruption))
+    enemy.hp = enemy.max_hp
+    enemy.atk = max(1, int(enemy.atk * corruption * condition["attack"]))
+    enemy.base_xp = max(1, int(enemy.base_xp * corruption * condition["xp"]))
+    enemy.gold_range = tuple(max(1, int(g * corruption * condition["gold"])) for g in enemy.gold_range)
+    if corruption_at(depth) > 0:
+        additions = ("sunder", "drain", "bleed")
+        ability = additions[(corruption_at(depth) - 1) % len(additions)]
+        if ability not in enemy.abilities:
+            enemy.abilities.append(ability)
+    return enemy
+
+
 def make_enemy(depth):
-    if depth <= 3:
-        tier = 1
-    elif depth <= 7:
-        tier = random.choices([1, 2], weights=[30, 70])[0]
-    elif depth <= 12:
-        tier = random.choices([1, 2, 3], weights=[10, 50, 40])[0]
-    elif depth <= 18:
-        tier = random.choices([2, 3, 4], weights=[15, 50, 35])[0]
-    elif depth <= 25:
-        tier = random.choices([2, 3, 4, 5], weights=[5, 25, 45, 25])[0]
+    zone = zone_for_depth(depth)
+    old = [e for tier, enemies in ENEMIES_BY_TIER.items() if tier <= min(5, 1 + (depth - 1) // 5)
+           for e in enemies if e["name"] in zone["old"]]
+    if old and random.random() < 0.35:
+        t = random.choice(old)
+        enemy = Enemy(t["name"], t["hp"], t["atk"], t["dfn"], t["xp"], t["gold"], list(t["abilities"]), depth)
     else:
-        tier = random.choices([3, 4, 5], weights=[15, 40, 45])[0]
-    template = random.choice(ENEMIES_BY_TIER[tier])
-    return Enemy(template["name"], template["hp"], template["atk"], template["dfn"],
-                 template["xp"], template["gold"], list(template["abilities"]), depth)
+        name, hp, atk, defense, abilities = random.choice(zone["mobs"])
+        enemy = Enemy(name, hp, atk, defense, max(15, hp // 2), (max(4, hp // 6), max(10, hp // 3)), list(abilities), depth)
+    _apply_depth_traits(enemy, depth)
+    if depth >= 11 and random.random() < 0.2:
+        affix, ability = random.choice([("Ravenous", "drain"), ("Venomous", "poison"), ("Rending", "sunder"), ("Berserk", "frenzy")])
+        enemy.name = f"{affix} {enemy.name} [ELITE]"
+        enemy.elite = True
+        enemy.max_hp = int(enemy.max_hp * 1.35)
+        enemy.hp = enemy.max_hp
+        enemy.atk = int(enemy.atk * 1.15)
+        enemy.base_xp = int(enemy.base_xp * 1.5)
+        enemy.gold_range = tuple(int(g * 1.5) for g in enemy.gold_range)
+        if ability not in enemy.abilities:
+            enemy.abilities.append(ability)
+    return enemy
 
 
 def make_boss(depth):
-    idx = ((depth // 5) - 1) % len(BOSSES)
-    b = BOSSES[idx]
-    extra_scale = 1 + max(0, (depth // 5) - len(BOSSES)) * 0.25
-    return Enemy(b["name"], int(b["hp"] * extra_scale), int(b["atk"] * extra_scale),
-                 b["dfn"], int(b["xp"] * extra_scale), b["gold"],
-                 list(b["abilities"]), depth, is_boss=True, taunt=b["taunt"], intro=b.get("intro", []))
+    zone = zone_for_depth(depth)
+    boss_index = zone["boss"]
+    if corruption_at(depth) % 2:
+        boss_index = {0: 6, 2: 4}.get(boss_index, boss_index)
+    b = BOSSES[boss_index]
+    boss = Enemy(b["name"], b["hp"], b["atk"], b["dfn"], b["xp"], b["gold"], list(b["abilities"]), depth,
+                 is_boss=True, taunt=b["taunt"], intro=[zone["lore"]] + b.get("intro", []))
+    return _apply_depth_traits(boss, depth)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1188,6 +1337,28 @@ class Combat:
         self.fled = False
         self._plan_intent()
 
+    def _skill_cost(self, skill):
+        reduction = 3 if self.p.set_count("ember") >= 2 else 0
+        return max(1, int(max(1, skill["cost"] - reduction) * condition_for_depth(self.e.depth)["mana"]))
+
+    def _deal_damage(self, damage):
+        if self.p.has_special("Sigmar's Light:") and self.e.family == "undead":
+            damage = int(damage * 1.1)
+        if self.p.has_special("+20% vs Chaos") and self.e.family == "chaos":
+            damage = int(damage * 1.2)
+        if self.p.has_special("Executioner:") and self.e.hp < self.e.max_hp * 0.3:
+            damage = int(damage * 1.25)
+        before = self.e.hp
+        self.e.take_damage(damage)
+        actual = before - self.e.hp
+        leech = (0.08 if self.p.has_special("Lifesteal:") else 0) + (0.06 if self.p.set_count("reaver") >= 3 else 0)
+        if leech and actual and self.p.is_alive():
+            healed = min(self.p.max_hp - self.p.hp, int(actual * leech))
+            self.p.heal(healed)
+            if healed:
+                self.log.append(co(f"  Your equipment drains {healed} HP.", C.GRN))
+        return actual
+
     def _plan_intent(self):
         phase = self.turn % 3
         if "heavy" in self.e.abilities or self.e.is_boss:
@@ -1198,10 +1369,12 @@ class Combat:
             intent = ("fear", "attack", "attack")[phase]
         elif "regen" in self.e.abilities:
             intent = ("attack", "regen", "attack")[phase]
+        elif "slow" in self.e.abilities:
+            intent = ("attack", "recover", "heavy")[phase]
         else:
             intent = ("attack", "guard", "heavy")[phase]
         # Multi-ability enemies alternate their special opening across cycles.
-        specials = [ability for ability in ("poison", "fear", "regen") if ability in self.e.abilities]
+        specials = [ability for ability in ("poison", "fear", "regen", "drain", "bleed", "sunder") if ability in self.e.abilities]
         if phase == 0 and specials:
             intent = specials[(self.turn // 3) % len(specials)]
         self.e.intent = intent
@@ -1235,6 +1408,9 @@ class Combat:
             "poison": "Poison strike — defending prevents the poison.",
             "fear": "Terrifying cry — fear reduces your damage; no direct attack.",
             "regen": "Regeneration — heals 5% HP, then attacks.",
+            "drain": "Soul drain — strike drains up to 8% max MP; defend to prevent the drain.",
+            "bleed": "Rending strike — causes bleeding; defend to prevent it.",
+            "sunder": "Armour breaker — reduces defense for 2 turns; defend to prevent it.",
         }
         if self.e.is_alive() and self.p.is_alive() and not self.fled:
             print(co(f"  Intent: {intents[self.e.intent]}", C.BYEL))
@@ -1255,8 +1431,8 @@ class Combat:
         skills = CLASSES[self.p.cls]["skills"]
         opts = ["Attack"]
         for sk in skills:
-            cost_color = C.GRN if self.p.mp >= sk["cost"] else C.RED
-            sk_cost = sk["cost"]
+            sk_cost = self._skill_cost(sk)
+            cost_color = C.GRN if self.p.mp >= sk_cost else C.RED
             sk_name = sk["name"]
             opts.append(f'{sk_name} ({co(str(sk_cost) + " MP", cost_color)})')
         opts.append("Use Potion")
@@ -1267,9 +1443,7 @@ class Combat:
         ch = get_choice(opts)
 
         if ch == 0:  # Attack
-            relic = self.p.equipment["accessory"]
-            special = relic.special if relic else ""
-            blood = special.startswith("Blood Echo:")
+            blood = self.p.has_special("Blood Echo:")
             cost = max(1, int(self.p.max_hp * 0.05))
             if blood and self.p.hp <= cost:
                 self.log.append(co("  Too wounded for Blood Echo; you make a normal attack.", C.YEL))
@@ -1281,26 +1455,39 @@ class Combat:
                 if not self.e.is_alive():
                     break
                 dmg, crit = self.p.calc_damage(mult=0.7 if blood else 1.0)
-                actual = self.e.take_damage(dmg)
+                actual = self._deal_damage(dmg)
                 crit_txt = co(" CRITICAL!", C.BYEL) if crit else ""
                 self.log.append(f"  You strike for {co(str(actual), C.BGRN)} damage!{crit_txt}")
-            if special.startswith("Channeling:"):
+            if self.p.set_count("thorn") >= 3 and self.e.is_alive():
+                self.e.status_effects = [e for e in self.e.status_effects if e["name"] != "Briar Bleed"]
+                dot = max(1, int(self.p.attack_power * 0.12))
+                self.e.status_effects.append({"name": "Briar Bleed", "turns": 2, "dot": dot})
+                self.log.append(co(f"  Thornstalker causes {dot} bleeding damage for 2 turns.", C.GRN))
+            if self.p.has_special("Channeling:"):
                 before = self.p.mp
                 self.p.restore_mp(6)
                 self.log.append(co(f"  Channeling restores {self.p.mp - before} MP.", C.BLU))
 
         elif 1 <= ch <= 3:
             sk = skills[ch - 1]
-            if self.p.mp < sk["cost"]:
+            cost = self._skill_cost(sk)
+            if self.p.mp < cost:
                 self.log.append(co("  Not enough mana! Choose another action.", C.RED))
                 return False
-            self.p.mp -= sk["cost"]
+            self.p.mp -= cost
             self._execute_skill(sk)
         elif ch == 4:
             return self._use_potion()
         elif ch == 5:
             self.p.defending = True
+            if self.p.has_special("Purity:"):
+                self.p.status_effects = [e for e in self.p.status_effects if e["name"] not in ("Poison", "Bleeding")]
+                self.log.append(co("  Purity cleanses poison and bleeding.", C.BGRN))
             self.p.restore_mp(3)
+            if self.p.set_count("ironwarden") >= 3:
+                healed = min(self.p.max_hp - self.p.hp, max(1, int(self.p.max_hp * 0.03)))
+                self.p.heal(healed)
+                self.log.append(co(f"  Ironwarden restores {healed} HP.", C.GRN))
             self.log.append(co("  You brace for impact and recover up to 3 MP.", C.BLU))
         elif ch == 6 and not self.e.is_boss:
             if random.random() < 0.6:
@@ -1315,8 +1502,8 @@ class Combat:
         if t == "damage":
             mult = sk["mult"]
             ac = sk.get("auto_crit", False)
-            dmg, crit = self.p.calc_damage(mult=mult, auto_crit=ac, skill_key="sk1" if sk == CLASSES[self.p.cls]["skills"][0] else ("sk3" if sk == CLASSES[self.p.cls]["skills"][2] else None))
-            actual = self.e.take_damage(dmg)
+            dmg, crit = self.p.calc_damage(is_skill=True, mult=mult, auto_crit=ac, skill_key="sk1" if sk == CLASSES[self.p.cls]["skills"][0] else ("sk3" if sk == CLASSES[self.p.cls]["skills"][2] else None))
+            actual = self._deal_damage(dmg)
             crit_txt = co(" CRITICAL!", C.BYEL) if crit else ""
             self.log.append(f"  {co(sk['name'], C.CYN)} deals {co(str(actual), C.BGRN)} damage!{crit_txt}")
             if sk.get("stun") and random.random() < sk["stun"]:
@@ -1326,8 +1513,8 @@ class Combat:
         elif t == "magic":
             mult = sk["mult"]
             sk_key = "sk1" if sk == CLASSES[self.p.cls]["skills"][0] else ("sk3" if sk == CLASSES[self.p.cls]["skills"][2] else None)
-            dmg, crit = self.p.calc_damage(mult=mult, is_magic=True, skill_key=sk_key)
-            actual = self.e.take_damage(dmg)
+            dmg, crit = self.p.calc_damage(is_skill=True, mult=mult, is_magic=True, skill_key=sk_key)
+            actual = self._deal_damage(dmg)
             crit_txt = co(" CRITICAL!", C.BYEL) if crit else ""
             self.log.append(f"  {co(sk['name'], C.CYN)} incinerates for {co(str(actual), C.BGRN)} damage!{crit_txt}")
             # Cauterize lifesteal
@@ -1351,8 +1538,8 @@ class Combat:
         elif t == "grudge":
             hp_pct = 1 - (self.p.hp / self.p.max_hp) if self.p.max_hp > 0 else 0
             mult = sk["base_mult"] + hp_pct * 1.5
-            dmg, crit = self.p.calc_damage(mult=mult, skill_key="sk1")
-            actual = self.e.take_damage(dmg)
+            dmg, crit = self.p.calc_damage(is_skill=True, mult=mult, skill_key="sk1")
+            actual = self._deal_damage(dmg)
             crit_txt = co(" CRITICAL!", C.BYEL) if crit else ""
             self.log.append(f"  {co(sk['name'], C.CYN)} strikes for {co(str(actual), C.BGRN)} damage!{crit_txt}")
 
@@ -1367,8 +1554,8 @@ class Combat:
 
         elif t == "dodge_strike":
             self.p.dodge_next = True
-            dmg, crit = self.p.calc_damage(mult=sk["mult"])
-            actual = self.e.take_damage(dmg)
+            dmg, crit = self.p.calc_damage(is_skill=True, mult=sk["mult"])
+            actual = self._deal_damage(dmg)
             self.log.append(f"  {co(sk['name'], C.CYN)} strikes for {co(str(actual), C.BGRN)} damage!")
             self.log.append(co("  You melt into shadow — dodging the next attack!", C.CYN))
             sk2_heal = self.p.get_talent_bonus("sk2_heal")
@@ -1381,8 +1568,8 @@ class Combat:
             total = 0
             hits = sk["hits"] + self.p.get_talent_bonus("sk3_hits")
             for i in range(hits):
-                dmg, crit = self.p.calc_damage(mult=sk["mult"])
-                actual = self.e.take_damage(dmg)
+                dmg, crit = self.p.calc_damage(is_skill=True, mult=sk["mult"])
+                actual = self._deal_damage(dmg)
                 total += actual
             self.log.append(f"  {co(sk['name'], C.CYN)}: {hits} arrows for {co(str(total), C.BGRN)} total damage!")
 
@@ -1450,7 +1637,25 @@ class Combat:
             healed = min(self.e.max_hp - self.e.hp, max(1, int(self.e.max_hp * 0.05)))
             self.e.hp += healed
             spec = ("regen", healed)
-        if spec == "poison":
+        if spec in ("drain", "bleed", "sunder"):
+            damage, _ = self._enemy_attack()
+            actual, result = self.p.take_damage(damage)
+            self.log.append(co(f"  {self.e.name} uses {spec}: {actual} damage.", C.RED))
+            if actual > 0 and not self.p.defending and random.random() * 100 >= self.p.get_talent_bonus("resist"):
+                if spec == "drain":
+                    drained = min(self.p.mp, max(1, int(self.p.max_mp * 0.08)))
+                    self.p.mp -= drained
+                    self.log.append(co(f"  You lose {drained} MP.", C.BLU))
+                elif spec == "bleed":
+                    self.p.status_effects = [e for e in self.p.status_effects if e["name"] != "Bleeding"]
+                    self.p.status_effects.append({"name": "Bleeding", "turns": 3, "dot": max(1, int(self.e.atk * 0.12))})
+                else:
+                    self.p.status_effects = [e for e in self.p.status_effects if e["name"] != "Sundered"]
+                    self.p.status_effects.append({"name": "Sundered", "turns": 3, "defense_bonus": -max(1, self.p.defense // 3)})
+            if isinstance(result, int) and result > 0:
+                self.e.hp = max(0, self.e.hp - result)
+                self.log.append(co(f"  Your defenses reflect {result} damage.", C.CYN))
+        elif spec == "poison":
             dmg, _ = self._enemy_attack()
             actual, result = self.p.take_damage(dmg)
             if result == "dodged":
@@ -1464,7 +1669,7 @@ class Combat:
                     self.p.status_effects.append({"name": "Poison", "turns": 3, "dot": dot})
                     self.log.append(co(f"  You are POISONED! ({dot} dmg/turn for 3 turns)", C.MAG))
                 if isinstance(result, int) and result > 0:
-                    self.log.append(co(f"  Flame Shield reflects {result} damage!", C.RED))
+                    self.log.append(co(f"  Your defenses reflect {result} damage!", C.RED))
                     self.e.hp = max(0, self.e.hp - result)
         elif spec == "fear":
             self.log.append(co(f"  {self.e.name}'s terrifying presence chills your blood!", C.MAG))
@@ -1487,7 +1692,7 @@ class Combat:
                 ht = co(" HEAVY BLOW!", C.BYEL) if hit_type == "heavy" else ""
                 self.log.append(f"  {co(self.e.name, C.RED)} strikes for {co(str(actual), C.RED)} damage!{ht}")
                 if isinstance(result, int) and result > 0:
-                    self.log.append(co(f"  Flame Shield reflects {result} damage!", C.RED))
+                    self.log.append(co(f"  Your defenses reflect {result} damage!", C.RED))
                     self.e.hp = max(0, self.e.hp - result)
         else:
             # Normal attack
@@ -1501,12 +1706,11 @@ class Combat:
                 ht = co(" HEAVY BLOW!", C.BYEL) if hit_type == "heavy" else ""
                 self.log.append(f"  {co(self.e.name, C.RED)} strikes for {co(str(actual), C.RED)} damage!{ht}")
                 if isinstance(result, int) and result > 0:
-                    self.log.append(co(f"  Flame Shield reflects {result} damage!", C.RED))
+                    self.log.append(co(f"  Your defenses reflect {result} damage!", C.RED))
                     self.e.hp = max(0, self.e.hp - result)
 
-        relic = self.p.equipment["accessory"]
-        if self.p.defending and relic and relic.special.startswith("Riposte:") and spec != "fear" and actual > 0:
-            reflected = self.e.take_damage(max(1, int(self.p.attack_power * 0.6)))
+        if self.p.defending and self.p.has_special("Riposte:") and spec != "fear" and actual > 0:
+            reflected = self._deal_damage(max(1, int(self.p.attack_power * 0.6)))
             self.log.append(co(f"  Riposte! Your guard returns {reflected} damage.", C.BCYN))
 
     def run(self):
@@ -1545,26 +1749,13 @@ class Combat:
 #  DUNGEON
 # ═══════════════════════════════════════════════════════════════
 
-CAMPAIGN_CHAPTERS = [
-    ("The Missing Courier", "Find Lukas's trail in the upper ruins. Defeat the guardian to recover his satchel."),
-    ("A Voice Behind the Wall", "Lukas is alive, but his captors are burning the evidence. Choose what to save."),
-    ("The Ritual Engine", "The ledger points to a ritual below. Sabotage its weapons or its protective seal."),
-    ("The Captain's Price", "Captain Voss sold the patrol routes to the cult. Decide his fate."),
-    ("The Bell Below", "Silence the Bell Warden before the ritual reaches Ubersreik."),
-]
-
 RELICS = [
     ("Bloodglass Pendant", "Blood Echo: basic attacks cost 5% max HP for two 70% strikes; normal strike if too wounded"),
     ("Waystone Focus", "Channeling: basic attacks restore 6 MP"),
     ("Oathkeeper's Seal", "Riposte: defend returns 60% attack power after a damaging strike"),
+    ("Headsman's Token", "Executioner: +25% direct damage against enemies below 30% HP"),
+    ("Purity Medallion", "Purity: defending removes poison and bleeding"),
 ]
-
-
-def campaign_status(player):
-    if player.campaign_stage >= len(CAMPAIGN_CHAPTERS):
-        return "The Bell Below — complete. Ubersreik is safe; the deeper ruins remain."
-    title, objective = CAMPAIGN_CHAPTERS[player.campaign_stage]
-    return f"The Bell Below — Depth {player.campaign_stage + 1}: {title}. {objective}"
 
 
 class Dungeon:
@@ -1580,7 +1771,6 @@ class Dungeon:
         self.camp_used = False
         self.contract = random.choice(["hunter", "explorer"])
         self.contract_progress = 0
-        self.chapter_choice = None
 
     def _generate_rooms(self):
         n = random.randint(4, 6)
@@ -1606,6 +1796,7 @@ class Dungeon:
         print(f"  {co(self.p.name, C.BGRN)} — Lvl {self.p.level}  |  {co(f'Depth {self.depth}', C.BYEL)}  |  Room {self.current_room + 1}/{len(self.rooms)}")
         print(f"  HP: {hp_bar(self.p.hp, self.p.max_hp)}")
         print(f"  MP: {mp_bar(self.p.mp, self.p.max_mp)}")
+        wrap(depth_description(self.depth), C.CYN)
         print(f"  {co('Depth Mood:', C.BRED)} {co(get_depth_mood(self.depth), C.GRY)}")
         print(f"  {co('Time Below:', C.CYN)} {co(f'Day {self.p.world_day}, {self.p.world_time}', C.GRY)}")
         sep()
@@ -1630,8 +1821,8 @@ class Dungeon:
         else:
             wrap("You light your torch and descend into the darkness below Ubersreik. "
                  "The entrance gives way to ancient passages carved long before the Empire. Stay alert.", C.GRY)
-        if self.depth == self.p.campaign_stage + 1 and self.depth <= 5:
-            wrap(campaign_status(self.p), C.CYN)
+        wrap(depth_description(self.depth), C.CYN)
+        wrap(zone_for_depth(self.depth)["lore"], C.GRY)
         goal = "Defeat 3 enemies" if self.contract == "hunter" else "Explore 3 non-combat rooms"
         wrap(f"Contract: {goal} and clear this depth for {30 + self.depth * 10} extra gold.", C.BYEL)
         pause()
@@ -1652,8 +1843,6 @@ class Dungeon:
                           "event": "Distant voices — a stranger or discovery", "empty": "Quiet passage — a moment of respite"}
                 choice = get_choice([labels[room["event"]], labels[room["alternative"]]])
                 room = dict(room, event=room["event"] if choice == 0 else room["alternative"])
-            if i == len(self.rooms) - 1 and self.depth == self.p.campaign_stage + 1 and self.depth <= 5:
-                self._chapter_scene()
             result = self._run_room(room)
             if room["event"] not in ("combat", "boss", "miniboss"):
                 self.contract_progress += 1
@@ -1691,12 +1880,12 @@ class Dungeon:
         if self.camp_used:
             return
         healing = 45 if "courier_rescued" in self.p.story_flags else 30
-        choice = get_choice([f"Tend wounds — restore {healing}% HP", "Meditate — restore 40% MP"])
+        choice = get_choice([f"Tend wounds — restore {healing}% HP", f"Meditate — restore {int(condition_for_depth(self.depth)['camp'] * 100)}% MP"])
         if choice == 0:
             fraction = 0.45 if "courier_rescued" in self.p.story_flags else 0.3
             self.p.heal(max(1, int(self.p.max_hp * fraction)))
         else:
-            self.p.restore_mp(max(1, int(self.p.max_mp * 0.4)))
+            self.p.restore_mp(max(1, int(self.p.max_mp * condition_for_depth(self.depth)["camp"])))
         self.camp_used = True
         print(co("  Your campfire fades. You continue into the darkness.", C.CYN))
         self._show_vitals()
@@ -1734,41 +1923,10 @@ class Dungeon:
             return "dead"
 
     def _make_guardian(self):
-        boss = make_boss(self.depth)
-        if self.depth == 5 and self.p.campaign_stage == 4:
-            boss.name = "The Bell Warden"
-            boss.taunt = "Every toll is another name erased. Yours is next."
-            boss.intro = ["A stolen watchman's bell hangs inside a cage of black iron. Its keeper raises a hammer."]
-            if "weapons_sabotaged" in self.p.story_flags:
-                boss.atk = max(1, int(boss.atk * 0.8))
-            if "seal_broken" in self.p.story_flags:
-                boss.max_hp = max(1, int(boss.max_hp * 0.75))
-                boss.hp = boss.max_hp
-        return boss
-
-    def _chapter_scene(self):
-        title, _ = CAMPAIGN_CHAPTERS[self.depth - 1]
-        hdr(title, C.CYN)
-        if self.depth == 1:
-            wrap("Lukas's torn satchel hangs from the guardian's belt. Inside glints an old watch relic. He may still be alive.", C.CYN)
-        elif self.depth == 2:
-            wrap("Lukas calls from a locked cell. Across the hall, a brazier consumes the captain's ledger. You can reach only one before the guardian arrives.", C.CYN)
-            choice = get_choice(["Rescue Lukas — future camps heal 45% HP", "Save the ledger — earn 100 gold on clearing; Lukas is lost"])
-            self.chapter_choice = "courier_rescued" if choice == 0 else "ledger_saved"
-        elif self.depth == 3:
-            wrap("The cult's forge feeds the Bell Warden. One blow can ruin its weapons or shatter the warding seal.", C.CYN)
-            choice = get_choice(["Sabotage weapons — final story boss has 20% less attack", "Break the seal — final story boss has 25% less HP"])
-            self.chapter_choice = "weapons_sabotaged" if choice == 0 else "seal_broken"
-        elif self.depth == 4:
-            wrap("Voss waits beside the exit. 'I only sold the routes. I never asked what they carried below.' He offers coin for silence.", C.CYN)
-            choice = get_choice(["Bring Voss to trial — receive 2 health and 2 mana potions on clearing", "Take his bargain — receive 150 gold on clearing; Voss escapes"])
-            self.chapter_choice = "captain_trial" if choice == 0 else "captain_bargain"
-        else:
-            wrap("The bell begins to swing. Beyond this door, the fate of the missing patrol will finally be decided.", C.BYEL)
-        pause()
+        return make_boss(self.depth)
 
     def _claim_relic(self):
-        if self.p.campaign_stage < 1 or "watch_relic_claimed" in self.p.story_flags:
+        if self.p.max_depth_cleared < 1 or "watch_relic_claimed" in self.p.story_flags:
             return
         if len(self.p.inventory) >= 20 and self.p.equipment["accessory"]:
             wrap("Your watch relic awaits. Free an inventory slot; claim it after your next cleared depth.", C.YEL)
@@ -1782,29 +1940,6 @@ class Dungeon:
         self.p.equip(item)
         self.p.set_story_flag("watch_relic_claimed")
         print(co(f"  Equipped {name}. Any previous accessory was moved to your inventory.", C.BGRN))
-
-    def _complete_chapter(self):
-        if self.depth != self.p.campaign_stage + 1 or self.depth > 5:
-            return
-        self.p.campaign_stage += 1
-        if self.chapter_choice:
-            self.p.set_story_flag(self.chapter_choice)
-        if self.chapter_choice in ("ledger_saved", "captain_bargain"):
-            reward = 100 if self.chapter_choice == "ledger_saved" else 150
-            self.p.gold += reward
-            self.p.total_gold_earned += reward
-            self.gold_found += reward
-            print(co(f"  Chapter reward: +{reward} gold.", C.BYEL))
-        if self.chapter_choice == "captain_trial":
-            for potion in ("Health Potion", "Mana Potion"):
-                self.p.potions[potion] = self.p.potions.get(potion, 0) + 2
-            print(co("  The watch supplies two health and two mana potions.", C.BGRN))
-        print(co(f"  Chapter {self.depth} complete: {CAMPAIGN_CHAPTERS[self.depth - 1][0]}", C.BYEL))
-        if self.depth == 5:
-            wrap("The bell cracks. For the first time in weeks, Ubersreik sleeps without hearing a name whispered beneath the streets.", C.CYN)
-            wrap("Lukas returns to his family and teaches the watch your survival tricks." if "courier_rescued" in self.p.story_flags else "The ledger exposes the cult's patrons, but Lukas's empty chair remains by the tavern fire.", C.CYN)
-            wrap("Voss stands trial before the families he betrayed." if "captain_trial" in self.p.story_flags else "Voss vanishes with your silence. Somewhere beyond the city, the debt remains.", C.CYN)
-            wrap("THE BELL BELOW — COMPLETE. You may keep exploring the endless depths.", C.BYEL)
 
     def _boss(self):
         boss = self._make_guardian()
@@ -1868,13 +2003,14 @@ class Dungeon:
                 print(co(f"  Paragon +1! ({self.p.paragon} total)", C.BYEL))
 
         # Item drop
-        drop_chance = 0.35 if not is_boss else 0.85
+        drop_chance = 0.85 if is_boss or enemy.elite else 0.35
         rarity_bonus = 0
         for it in self.p.equipment.values():
             if it and "Lucky" in (it.special or ""):
                 rarity_bonus += 8
         if random.random() < drop_chance:
-            item = generate_item(self.depth)
+            lucky_rarity = random.choice(["Rare", "Epic", "Legendary"]) if rarity_bonus and random.random() * 100 < rarity_bonus else None
+            item = generate_item(self.depth, rarity=lucky_rarity)
             print(f"\n  {co('Item dropped:', C.YEL)} {item.display_name()}")
             print(f"    {item.stat_line()}")
             ch = get_choice(["Pick up", "Leave it"])
@@ -1888,7 +2024,8 @@ class Dungeon:
 
         # Boss bonus drop
         if is_boss:
-            bonus_item = generate_item(self.depth, rarity=random.choice(["Rare", "Epic", "Legendary"]))
+            bonus_item = generate_item(self.depth, rarity=random.choice(["Rare", "Epic", "Legendary"]),
+                                       set_id=zone_for_depth(self.depth)["set"] if self.depth % 5 == 0 else None)
             print(f"\n  {co('Boss Bonus Drop:', C.BYEL)} {bonus_item.display_name()}")
             print(f"    {bonus_item.stat_line()}")
             ch = get_choice(["Pick up", "Leave it"])
@@ -2182,7 +2319,6 @@ class Dungeon:
             hdr("RETREAT", C.YEL)
 
         if cleared:
-            self._complete_chapter()
             self._claim_relic()
         progress = self.kills if self.contract == "hunter" else self.contract_progress
         if cleared and progress >= 3:
@@ -2267,7 +2403,7 @@ class Town:
                 print(f"  XP: {xp_bar(self.p.xp, self.p.xp_to_level)}")
             print(f"  {co('Town Status:', C.BYEL)} Day {self.p.world_day}, {self.p.world_time} | {self.p.world_weather}")
             print(f"  {co('Omen:', C.MAG)} {self.p.world_omen}")
-            wrap(campaign_status(self.p), C.CYN)
+            wrap("Next descent: " + depth_description(self.p.max_depth_cleared + 1), C.CYN)
             if self.p.last_expedition:
                 le = self.p.last_expedition
                 print(f"  {co('Last Expedition:', C.CYN)} Depth {le.get('depth', '?')} | {le.get('outcome', 'Unknown')} | "
@@ -2522,6 +2658,8 @@ class Town:
             clr()
             hdr("CHARACTER SHEET", C.CYN)
             p = self.p
+            for line in p.set_summary():
+                wrap(line, C.BYEL)
             print(f"\n  {co(p.name, C.BGRN)} — {p.cls}")
             print(f"  Level: {p.level}  |  Paragon: {p.paragon}")
             print(f"  Title: {co(get_title(p.max_depth_cleared), C.BYEL)}")
@@ -2893,21 +3031,27 @@ class Game:
         print()
 
         depths = list(range(max(1, max_available - 4), max_available + 1))
-        if self.player.campaign_stage < 5:
-            depths = sorted(set(depths + [self.player.campaign_stage + 1]))
         opts = []
         for d in depths:
             boss_tag = co(" [BOSS]", C.BYEL) if d % 5 == 0 else ""
             new_tag = co(" [NEW]", C.BRED) if d > self.player.max_depth_cleared else ""
-            story_tag = " [STORY]" if self.player.campaign_stage < 5 and d == self.player.campaign_stage + 1 else ""
-            opts.append(f"Depth {d}{boss_tag}{new_tag}{story_tag}")
+            opts.append(f"Depth {d}{boss_tag}{new_tag} — {depth_description(d)}")
+        opts.append("Choose another unlocked depth (farm a guardian or an easier zone)")
         opts.append("Back to town")
         ch = get_choice(opts)
-
-        if ch >= len(opts) - 1:
+        if ch == len(opts) - 1:
             return
-
-        depth = depths[ch]
+        if ch == len(depths):
+            while True:
+                answer = get_input(f"Depth 1–{max_available} (0 to cancel): ").strip()
+                if answer in ("", "0"):
+                    return
+                if answer.isdigit() and 1 <= int(answer) <= max_available:
+                    depth = int(answer)
+                    break
+                print(co("  Choose an unlocked depth.", C.YEL))
+        else:
+            depth = depths[ch]
         dungeon = Dungeon(self.player, depth)
         dungeon.run()
         self.player.advance_world(1)

@@ -74,33 +74,64 @@ Back it up if you want to preserve progress!
 
 Run `python3 -B -m unittest discover -s tests -v` for combat effects, expedition routes, contracts, camping, defeat reporting, and save compatibility. Tests do not write to your save file.
 
-## The Bell Below — a five-depth adventure
+## Endless depth zones
 
-Follow the `[STORY]` depth from town to find a missing courier, expose a betrayal, sabotage a ritual, and face the Bell Warden. Each chapter advances only after its final guardian is defeated. Decisions affect supplies, camping, the final boss, and the ending. After chapter five, endless exploration remains available.
+Progression has one gate: clear the current depth to unlock the next. There is no final floor, chapter selection, or separate campaign. Lore describes the zone and its guardian within the normal descent.
 
-Existing saves start at chapter one without losing their level, equipment, gold, or cleared depths. The next story depth remains selectable even if your character has already progressed far beyond it. Story choices and chapter progress are saved with your character.
+| First appearance | Zone | Guardian's guaranteed set drop |
+| --- | --- | --- |
+| 1–5 | Vermin Warrens | Thornstalker |
+| 6–10 | Broken Forges | Ironwarden |
+| 11–15 | Sepulchral Halls | Blood Reaver |
+| 16–20 | Rootbound Deeps | Thornstalker |
+| 21–25 | Warpfire Sanctum | Ember Covenant |
+| 26–30 | The Black Abyss | Blood Reaver |
 
-### Read your enemy
+The zones recur every 30 depths, with increasing corruption, additional enemy abilities, rotating conditions and depth-scaled enemies and equipment. Some guardians alternate on later circuits. Corruption's stat multiplier approaches 2× rather than growing without limit on top of depth scaling. Ordinary armor mitigation caps at 75% for both sides; defensive actions and wards can reach 85%, keeping damage relevant in deep play.
 
-Combat shows the enemy's **intent before your action**:
+There are 24 new enemy templates alongside the original roster. Soul drain attacks consume mana, rending attacks cause bleeding, and armour breakers temporarily reduce defense. These attacks are announced and defending prevents their added effect. From depth 11, enemies can roll one of four elite variants with extra abilities and better rewards.
 
-- **Heavy blow:** defend, dodge, or stun. Heavy enemies and bosses recover afterward, taking 50% extra damage and skipping their attack.
-- **Guard:** the enemy takes half damage and does not attack; prepare or recover resources.
-- **Poison strike:** defending prevents new poison, while still reducing the incoming strike.
-- Fear and regeneration are also announced. Enemies with several abilities alternate their special openings.
+### Conditions
 
-Defending restores up to 3 MP. Cancelling the potion menu or choosing an unaffordable skill no longer gives the enemy a free turn.
+The first five floors have no additional hazard. Later five-floor bands rotate:
 
-### Choose a watch relic
+- **Blood Moon:** enemies deal 15% more damage and yield 20% more gold.
+- **Warp Surge:** skills cost 20% less mana, while enemies deal 10% more damage.
+- **Sapping Cold:** meditation at camp restores 25% mana instead of 40%; enemies yield 20% more XP.
 
-After clearing the first story chapter, choose one accessory:
+Check the depth menu before entering. `Choose another unlocked depth` lets you return to an easier zone or farm a specific guardian. Uncleared depths beyond your next one remain locked.
+
+## Equipment sets
+
+Each set contains a weapon, armor and accessory: 12 named pieces total. Only **equipped** pieces count; the character sheet shows your active bonuses. Set pieces keep scaling with their drop depth, so a deeper version can replace an older one without changing your build.
+
+| Set | Two pieces | Three pieces (also keeps the two-piece bonus) |
+| --- | --- | --- |
+| Ironwarden | +8% block chance | Defending heals 3% maximum HP |
+| Ember Covenant | Skills cost 3 less MP | +25% skill damage |
+| Thornstalker | +8% dodge chance | Basic attacks cause two ticks of bleeding at 12% attack power per tick; reapplying refreshes it |
+| Blood Reaver | +8% critical chance | Direct damage heals 6% of actual enemy HP removed, excluding overkill |
+
+At depth 5 and beyond, Rare/Epic/Legendary items have a 35% chance to become a random set piece. Every fifth-depth guardian additionally drops one guaranteed piece from its zone's set; the slot and rarity vary. There is no requirement to finish a story or collect a full set to descend.
+
+## Tactical combat and relics
+
+Read the enemy's **intent before choosing your action**. Heavy attackers recover after their blow, taking 50% extra damage and skipping their attack. Guarding enemies take half damage and do not attack. Defending restores up to 3 MP and prevents new poison from a poison strike. Stuns and dodges provide alternative counters. Cancelling a potion or selecting a skill without enough mana does not consume a turn.
+
+Choose a free accessory after your first successful depth; it can be deferred until another successful expedition. More relics can appear in Rare or better accessory loot, so the initial choice does not permanently lock your playstyle.
 
 | Relic | Effect |
 | --- | --- |
-| Bloodglass Pendant | Basic attacks spend 5% maximum HP for two strikes at 70% damage each. If too wounded to pay safely, use one normal strike. |
-| Waystone Focus | Basic attacks restore up to 6 MP, supporting more skill use. |
-| Oathkeeper's Seal | Taking a damaging hit while defending triggers a counterattack at 60% attack power, reduced by enemy defenses. |
+| Bloodglass Pendant | Spend 5% maximum HP for two basic strikes at 70% damage each; use a normal attack if too wounded to pay safely |
+| Waystone Focus | Basic attacks restore up to 6 MP |
+| Oathkeeper's Seal | A damaging enemy strike while defending triggers a counterattack at 60% attack power, before enemy mitigation |
+| Headsman's Token | +25% direct damage against an enemy already below 30% HP |
+| Purity Medallion | Defending removes poison and bleeding |
 
-The relic equips immediately and moves your previous accessory to inventory. You can defer your choice; if your inventory is full and an accessory is equipped, free a slot and claim the relic after another successful expedition. Relics work for all four classes and retain their effects through save/load.
+Rare and Epic equipment can now carry special effects too. Existing legendary damage, leech, block, regeneration, reflection, dodge and ward effects apply in combat. Lucky equipment provides its stated percentage chance for a successful ordinary combat drop to receive Rare-or-better rarity.
 
-The automated suite covers tactical counters, real combat loops for all classes, relics, chapter progression, rewards, old saves, and the earlier regression cases. Difficulty and pacing still benefit from human playtesting.
+## Existing saves
+
+Your level, depth record, equipment, inventory and relics remain valid. Former campaign progress is retained as legacy save data but does not control access or rewards. Any previously earned courier camping benefit remains available. New characters need no campaign to obtain relics or explore zones.
+
+Run `python3 -B -m unittest discover -s tests -v`. Tests cover set bonuses, old saves, enemy actions, guardian drops, conditions, depth selection and deep generation, plus combat regressions. Automated checks do not replace human testing of difficulty and pacing.
