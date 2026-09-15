@@ -61,3 +61,15 @@ All input is number-based menus. Just type the number of your choice and press E
 
 Your save is stored as `wq_save.json` in the same folder as the game.  
 Back it up if you want to preserve progress!
+
+## Expedition choices
+
+- Before each ordinary room, choose between two paths with visible encounter types: combat, treasure, traps, shrines, events, or quiet passages. The final guardian remains mandatory.
+- Between rooms, make camp once per expedition: restore 30% HP or 40% MP.
+- Each expedition offers a contract: defeat three enemies or explore three non-combat rooms. Complete the objective **and clear the depth** to earn `30 + depth × 10` bonus gold. Retreating does not pay the contract.
+- Damage buffs and fear now affect damage. Ironbark grants its advertised +5 defense, Ancestral Ward reduces damage, and Morr's Shield prevents fear.
+- The temple's Sigmar blessing and Morr's Shield last until the expedition ends; shrine damage/ward blessings last five combat turns.
+
+## Verification
+
+Run `python3 -B -m unittest discover -s tests -v` for combat effects, expedition routes, contracts, camping, defeat reporting, and save compatibility. Tests do not write to your save file.

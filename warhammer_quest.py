@@ -826,7 +826,8 @@ class Player:
         equip_tou = sum(it.bonus_stats.get("tou", 0) for it in self.equipment.values() if it)
         talent_def = self._talent_val("defense")
         acc_def = sum(it.defense for it in self.equipment.values() if it and it.slot == "accessory")
-        return base + a_def + equip_tou + talent_def + acc_def
+        effect_def = sum(e.get("defense_bonus", 0) for e in self.status_effects)
+        return base + a_def + equip_tou + talent_def + acc_def + effect_def
 
     @property
     def crit_chance(self):
@@ -899,7 +900,7 @@ class Player:
         for e in self.status_effects:
             if e["name"] == "Iron Resolve":
                 red = min(red + e.get("value", 0.5), 0.85)
-            if e["name"] == "Flame Shield":
+            if e["name"] in ("Flame Shield", "Ancestral Ward"):
                 red = min(red + e.get("value", 0.4), 0.85)
         if self.dodge_next:
             self.dodge_next = False
@@ -928,7 +929,8 @@ class Player:
         bonus_pct = 0
         if skill_key:
             bonus_pct = self.get_talent_bonus(skill_key)
-        dmg = base * mult * (1 + bonus_pct / 100)
+        status_bonus = sum(e.get("damage_bonus", 0) for e in self.status_effects)
+        dmg = base * mult * (1 + bonus_pct / 100) * max(0, 1 + status_bonus)
         crit = False
         if auto_crit or random.random() * 100 < self.crit_chance:
             dmg *= 1.8
@@ -956,6 +958,9 @@ class Player:
                 else:
                     self.hp = max(0, self.hp - e["dot"])
                     msgs.append(co(f"  {e['name']} deals {e['dot']} damage!", C.RED))
+            if e.get("expedition"):
+                new_effects.append(e)
+                continue
             e["turns"] -= 1
             if e["turns"] > 0:
                 new_effects.append(e)
@@ -1371,7 +1376,7 @@ class Combat:
             self.p.status_effects.append({"name": "Might", "turns": pt["turns"], "damage_bonus": 0.2})
             self.log.append(co(f"  Elixir of Might! +STR for {pt['turns']} turns.", C.YEL))
         elif pt["type"] == "buff_def":
-            self.p.status_effects.append({"name": "Ironbark", "turns": pt["turns"], "value": 0.2})
+            self.p.status_effects.append({"name": "Ironbark", "turns": pt["turns"], "defense_bonus": pt["value"]})
             self.log.append(co(f"  Ironbark Tonic! +DEF for {pt['turns']} turns.", C.BLU))
 
     def enemy_turn(self):
@@ -1415,7 +1420,7 @@ class Combat:
         elif spec == "fear":
             self.log.append(co(f"  {self.e.name}'s terrifying presence chills your blood!", C.MAG))
             r = self.p.get_talent_bonus("resist")
-            if random.random() * 100 >= r:
+            if not any(e["name"] == "Morr's Shield" for e in self.p.status_effects) and random.random() * 100 >= r:
                 self.p.status_effects.append({"name": "Fear", "turns": 2, "damage_bonus": -0.15})
                 self.log.append(co("  You are gripped by FEAR! (-15% damage for 2 turns)", C.MAG))
             else:
@@ -1494,6 +1499,9 @@ class Dungeon:
         self.gold_found = 0
         self.items_found = []
         self.lore_found_this_run = []
+        self.camp_used = False
+        self.contract = random.choice(["hunter", "explorer"])
+        self.contract_progress = 0
 
     def _generate_rooms(self):
         n = random.randint(4, 6)
@@ -1503,7 +1511,8 @@ class Dungeon:
             weights = [40, 15, 15, 10, 10, 10]
             events = ["combat", "treasure", "trap", "shrine", "event", "empty"]
             event = random.choices(events, weights=weights)[0]
-            rooms.append({"type": rtype, "event": event, "index": i + 1})
+            alternative = random.choice([e for e in events if e != event])
+            rooms.append({"type": rtype, "event": event, "alternative": alternative, "index": i + 1})
         # Boss room
         is_boss_depth = (self.depth % 5 == 0)
         boss_event = "boss" if is_boss_depth else "miniboss"
@@ -1538,6 +1547,8 @@ class Dungeon:
         else:
             wrap("You light your torch and descend into the darkness below Ubersreik. "
                  "The entrance gives way to ancient passages carved long before the Empire. Stay alert.", C.GRY)
+        goal = "Defeat 3 enemies" if self.contract == "hunter" else "Explore 3 non-combat rooms"
+        wrap(f"Contract: {goal} and clear this depth for {30 + self.depth * 10} extra gold.", C.BYEL)
         pause()
 
         for i, room in enumerate(self.rooms):
@@ -1550,7 +1561,15 @@ class Dungeon:
             wrap(f"You enter a {room['type'].lower()}...", C.WHT)
             print()
 
+            if "alternative" in room:
+                labels = {"combat": "Hunting trail — enemy encounter", "treasure": "Hidden vault — gold and possible loot",
+                          "trap": "Trapped passage — stat check, risk of injury", "shrine": "Sacred chamber — a blessing",
+                          "event": "Distant voices — a stranger or discovery", "empty": "Quiet passage — a moment of respite"}
+                choice = get_choice([labels[room["event"]], labels[room["alternative"]]])
+                room = dict(room, event=room["event"] if choice == 0 else room["alternative"])
             result = self._run_room(room)
+            if room["event"] not in ("combat", "boss", "miniboss"):
+                self.contract_progress += 1
             if result == "dead":
                 return self._end_run(False)
             elif result == "flee_dungeon":
@@ -1566,7 +1585,12 @@ class Dungeon:
 
             if i < len(self.rooms) - 1:
                 print(f"\n  {co('Continue deeper or retreat to town?', C.YEL)}")
-                ch = get_choice(["Continue deeper", "Retreat to town"])
+                choices = ["Continue deeper", "Retreat to town"]
+                if not self.camp_used:
+                    choices.append("Make camp (once): choose healing or mana")
+                ch = get_choice(choices)
+                if ch == 2:
+                    self._camp()
                 if ch == 1:
                     print(co("\n  You retreat back to the surface.", C.YEL))
                     pause()
@@ -1574,6 +1598,17 @@ class Dungeon:
 
         # Cleared all rooms
         return self._end_run(True)
+
+    def _camp(self):
+        if self.camp_used:
+            return
+        choice = get_choice(["Tend wounds — restore 30% HP", "Meditate — restore 40% MP"])
+        if choice == 0:
+            self.p.heal(max(1, int(self.p.max_hp * 0.3)))
+        else:
+            self.p.restore_mp(max(1, int(self.p.max_mp * 0.4)))
+        self.camp_used = True
+        print(co("  Your campfire fades. You continue into the darkness.", C.CYN))
 
     def _run_room(self, room):
         ev = room["event"]
@@ -1781,10 +1816,10 @@ class Dungeon:
         shrines = [
             ("A shrine to Sigmar radiates golden light.",
              "Sigmar's Blessing: +20% damage for 5 turns",
-             {"name": "Sigmar's Blessing", "turns": 8, "damage_bonus": 0.2}),
+             {"name": "Sigmar's Blessing", "turns": 5, "damage_bonus": 0.2}),
             ("A Dwarfen rune stone hums with ancient power.",
              "Ancestral Ward: +30% damage reduction for 5 turns",
-             {"name": "Ancestral Ward", "turns": 8, "value": 0.3}),
+             {"name": "Ancestral Ward", "turns": 5, "value": 0.3}),
             ("A pool of luminous water glows softly.",
              "Waters of Life: Fully restores HP",
              "full_heal_hp"),
@@ -1793,7 +1828,7 @@ class Dungeon:
              "full_heal_mp"),
             ("A statue of Morr, god of the dead, watches silently.",
              "Morr's Protection: Immune to fear for this depth",
-             {"name": "Morr's Shield", "turns": 20}),
+             {"name": "Morr's Shield", "turns": 20, "expedition": True}),
         ]
         shrine = random.choice(shrines)
         wrap(shrine[0], C.CYN)
@@ -1958,6 +1993,8 @@ class Dungeon:
         return "continue"
 
     def _end_run(self, cleared, fled=False):
+        defeated = not self.p.is_alive()
+        cleared = cleared and not defeated
         clr()
         if not self.p.is_alive():
             hdr("DEFEAT", C.RED)
@@ -1978,6 +2015,13 @@ class Dungeon:
         else:
             hdr("RETREAT", C.YEL)
 
+        progress = self.kills if self.contract == "hunter" else self.contract_progress
+        if cleared and progress >= 3:
+            reward = 30 + self.depth * 10
+            self.p.gold += reward
+            self.p.total_gold_earned += reward
+            self.gold_found += reward
+            print(co(f"  Contract complete! +{reward} gold.", C.BYEL))
         sep()
         print(f"  Enemies slain:  {co(str(self.kills), C.RED)}")
         print(f"  Gold found:     {co(str(self.gold_found), C.YEL)}")
@@ -1987,7 +2031,7 @@ class Dungeon:
         sep()
         self.p.last_expedition = {
             "depth": self.depth,
-            "outcome": "Cleared" if cleared else ("Defeat" if not self.p.is_alive() else "Retreated"),
+            "outcome": "Cleared" if cleared else ("Defeat" if defeated else "Retreated"),
             "kills": self.kills,
             "gold": self.gold_found,
             "items": len(self.items_found),
@@ -2203,7 +2247,7 @@ class Town:
             if ch == 0:
                 if self.p.gold >= bless_cost:
                     self.p.gold -= bless_cost
-                    self.p.status_effects.append({"name": "Sigmar's Blessing", "turns": 30, "damage_bonus": 0.15})
+                    self.p.status_effects.append({"name": "Sigmar's Blessing", "turns": 30, "expedition": True, "damage_bonus": 0.15})
                     print(co("\n  Golden light washes over you. Sigmar protects!", C.BYEL))
                 else:
                     print(co("\n  'Faith alone won't pay for candles, child.'", C.RED))
@@ -2504,16 +2548,16 @@ class Game:
     def title_screen(self):
         clr()
         print(co(r"""
-  ╔════════════════════════════════════════════╗
-  ║                                            ║
-  ║  █   █ █▀▀█ █▀▀█ █  █ █▀▀█ █▀█▀█ █▀█▀█  ║
-  ║  █ █ █ █▀▀█ █▀▀▄ █▀▀█ █▀▀█ █ █ █ █ █ █  ║
-  ║  █▄▀▄█ ▀  ▀ ▀  ▀ ▀  ▀ ▀  ▀ ▀ ▀ ▀ ▀▀▀▀▀  ║
-  ║                                            ║
-  ║   Q U E S T :  D E P T H S  O F  T H E    ║
-  ║          O L D   W O R L D                 ║
-  ║                                            ║
-  ╚════════════════════════════════════════════╝
+  ╔══════════════════════════════════════════════╗
+  ║                                              ║
+  ║  █   █ █▀█ █▀▄ █ █ █▀█ █▄ ▄█ █▄ ▄█ █▀▀ █▀▄   ║
+  ║  █ █ █ █▀█ █▀▄ █▀█ █▀█ █ █ █ █ █ █ █▀▀ █▀▄   ║
+  ║  ▀▀ ▀▀ ▀ ▀ ▀ ▀ ▀ ▀ ▀ ▀ ▀   ▀ ▀   ▀ ▀▀▀ ▀ ▀   ║
+  ║                                              ║
+  ║     Q U E S T :  D E P T H S  O F  T H E      ║
+  ║            O L D   W O R L D                 ║
+  ║                                              ║
+  ╚══════════════════════════════════════════════╝
 """, C.BRED))
         print(co("   A dungeon crawler in the Warhammer Fantasy world", C.CYN))
         print(co("   Inspired by Warhammer Quest, Diablo, HeroQuest", C.GRY))
