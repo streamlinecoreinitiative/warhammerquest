@@ -1519,6 +1519,10 @@ class Dungeon:
         rooms.append({"type": "Boss Chamber", "event": boss_event, "index": n + 1})
         return rooms
 
+    def _show_vitals(self):
+        print(f"  HP: {hp_bar(self.p.hp, self.p.max_hp)}")
+        print(f"  MP: {mp_bar(self.p.mp, self.p.max_mp)}")
+
     def _show_dungeon_status(self, room_type=""):
         print(f"  {co(self.p.name, C.BGRN)} — Lvl {self.p.level}  |  {co(f'Depth {self.depth}', C.BYEL)}  |  Room {self.current_room + 1}/{len(self.rooms)}")
         print(f"  HP: {hp_bar(self.p.hp, self.p.max_hp)}")
@@ -1584,6 +1588,7 @@ class Dungeon:
                 return self._end_run(False)
 
             if i < len(self.rooms) - 1:
+                self._show_vitals()
                 print(f"\n  {co('Continue deeper or retreat to town?', C.YEL)}")
                 choices = ["Continue deeper", "Retreat to town"]
                 if not self.camp_used:
@@ -1609,6 +1614,8 @@ class Dungeon:
             self.p.restore_mp(max(1, int(self.p.max_mp * 0.4)))
         self.camp_used = True
         print(co("  Your campfire fades. You continue into the darkness.", C.CYN))
+        self._show_vitals()
+        pause()
 
     def _run_room(self, room):
         ev = room["event"]
@@ -1809,6 +1816,7 @@ class Dungeon:
             if "Poison" in trap[0] or "Warpstone" in trap[0]:
                 self.p.status_effects.append({"name": "Poison", "turns": 3, "dot": max(2, self.depth)})
                 print(co("  You are poisoned!", C.MAG))
+        self._show_vitals()
         pause()
         return "continue"
 

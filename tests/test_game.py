@@ -58,6 +58,18 @@ class GameTests(unittest.TestCase):
             self.finish(dungeon, cleared)
             self.assertEqual(self.p.gold - before, 40 if cleared else 0)
 
+    def test_trap_displays_damage_before_pause(self):
+        dungeon = game.Dungeon(self.p, 1)
+        self.p.base_hp += 200
+        self.p.hp = 200
+        output = io.StringIO()
+        def paused():
+            self.assertIn('187/', output.getvalue())
+            self.assertIn('HP:', output.getvalue())
+        with patch.object(game.random, 'choice', return_value=('An ancient glyph explodes!', 'int')), patch.object(game.random, 'randint', side_effect=[-100, 11]), patch.object(game, 'pause', side_effect=paused), contextlib.redirect_stdout(output):
+            dungeon._trap()
+        self.assertEqual(self.p.hp, 187)
+
     def test_routes_keep_final_guardian(self):
         for depth in (1, 5, 20):
             dungeon = game.Dungeon(self.p, depth)
@@ -68,7 +80,7 @@ class GameTests(unittest.TestCase):
     def test_camp_only_once(self):
         dungeon = game.Dungeon(self.p, 1)
         self.p.hp = 1
-        with patch.object(game, 'get_choice', return_value=0), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(game, 'get_choice', return_value=0), patch.object(game, 'pause'), contextlib.redirect_stdout(io.StringIO()):
             dungeon._camp()
             healed = self.p.hp
             dungeon._camp()
