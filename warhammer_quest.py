@@ -771,6 +771,7 @@ class Player:
         self.total_gold_earned = 0
         self.lore_found = []
         self.paragon = 0
+        self.campaign_stage = 0
         self.world_day = 1
         self.world_time_index = random.randrange(len(WORLD_TIMES))
         self.world_weather = random.choice(WORLD_WEATHER)
@@ -1030,6 +1031,7 @@ class Player:
             "total_gold_earned": self.total_gold_earned,
             "lore_found": self.lore_found,
             "paragon": self.paragon,
+            "campaign_stage": self.campaign_stage,
             "world_day": self.world_day,
             "world_time_index": self.world_time_index,
             "world_weather": self.world_weather,
@@ -1059,6 +1061,7 @@ class Player:
         p.total_gold_earned = d.get("total_gold_earned", 0)
         p.lore_found = d.get("lore_found", [])
         p.paragon = d.get("paragon", 0)
+        p.campaign_stage = d.get("campaign_stage", 0)
         p.world_day = d.get("world_day", 1)
         p.world_time_index = d.get("world_time_index", random.randrange(len(WORLD_TIMES)))
         p.world_weather = d.get("world_weather", random.choice(WORLD_WEATHER))
@@ -1093,10 +1096,12 @@ class Enemy:
         self.status_effects = []
         self.frenzy_active = False
         self.depth = depth
+        self.intent = "attack"
 
     def take_damage(self, raw):
         red = self.dfn / (self.dfn + 40)
-        actual = max(1, int(raw * (1 - red)))
+        stance = 0.5 if self.intent == "guard" else (1.5 if self.intent == "recover" else 1.0)
+        actual = max(1, int(raw * (1 - red) * stance))
         self.hp = max(0, self.hp - actual)
         return actual
 
@@ -1181,6 +1186,33 @@ class Combat:
         self.turn = 0
         self.log = []
         self.fled = False
+        self._plan_intent()
+
+    def _plan_intent(self):
+        phase = self.turn % 3
+        if "heavy" in self.e.abilities or self.e.is_boss:
+            intent = ("attack", "heavy", "recover")[phase]
+        elif "poison" in self.e.abilities:
+            intent = ("poison", "attack", "recover")[phase]
+        elif "fear" in self.e.abilities:
+            intent = ("fear", "attack", "attack")[phase]
+        elif "regen" in self.e.abilities:
+            intent = ("attack", "regen", "attack")[phase]
+        else:
+            intent = ("attack", "guard", "heavy")[phase]
+        # Multi-ability enemies alternate their special opening across cycles.
+        specials = [ability for ability in ("poison", "fear", "regen") if ability in self.e.abilities]
+        if phase == 0 and specials:
+            intent = specials[(self.turn // 3) % len(specials)]
+        self.e.intent = intent
+
+    def _enemy_attack(self):
+        base = self.e.atk
+        if "frenzy" in self.e.abilities and self.e.hp < self.e.max_hp * 0.3:
+            base = int(base * 1.5)
+        if self.e.intent == "heavy":
+            return int(base * 1.8), "heavy"
+        return max(1, base + random.randint(-2, 2)), "normal"
 
     def display(self):
         clr()
@@ -1195,6 +1227,17 @@ class Combat:
             effs = ", ".join(co(e["name"], C.MAG) for e in self.e.status_effects)
             print(f"  Effects: {effs}")
         sep()
+        intents = {
+            "attack": "Attack — a normal strike is coming.",
+            "heavy": "HEAVY BLOW — defend, dodge or stun to counter it!",
+            "recover": "Exhausted — no attack; takes 50% extra damage this turn.",
+            "guard": "Guarding — takes half damage; no attack. Recover mana or prepare a skill.",
+            "poison": "Poison strike — defending prevents the poison.",
+            "fear": "Terrifying cry — fear reduces your damage; no direct attack.",
+            "regen": "Regeneration — heals 5% HP, then attacks.",
+        }
+        if self.e.is_alive() and self.p.is_alive() and not self.fled:
+            print(co(f"  Intent: {intents[self.e.intent]}", C.BYEL))
         # Player info
         print(f"  {co(self.p.name, C.BGRN)} — {self.p.cls} (Lvl {self.p.level})")
         print(f"  HP: {hp_bar(self.p.hp, self.p.max_hp)}")
@@ -1224,51 +1267,48 @@ class Combat:
         ch = get_choice(opts)
 
         if ch == 0:  # Attack
-            dmg, crit = self.p.calc_damage()
-            actual = self.e.take_damage(dmg)
-            crit_txt = co(" CRITICAL!", C.BYEL) if crit else ""
-            self.log.append(f"  You strike for {co(str(actual), C.BGRN)} damage!{crit_txt}")
+            relic = self.p.equipment["accessory"]
+            special = relic.special if relic else ""
+            blood = special.startswith("Blood Echo:")
+            cost = max(1, int(self.p.max_hp * 0.05))
+            if blood and self.p.hp <= cost:
+                self.log.append(co("  Too wounded for Blood Echo; you make a normal attack.", C.YEL))
+                blood = False
+            if blood:
+                self.p.hp -= cost
+                self.log.append(co(f"  Blood Echo consumes {cost} HP for two strikes.", C.RED))
+            for _ in range(2 if blood else 1):
+                if not self.e.is_alive():
+                    break
+                dmg, crit = self.p.calc_damage(mult=0.7 if blood else 1.0)
+                actual = self.e.take_damage(dmg)
+                crit_txt = co(" CRITICAL!", C.BYEL) if crit else ""
+                self.log.append(f"  You strike for {co(str(actual), C.BGRN)} damage!{crit_txt}")
+            if special.startswith("Channeling:"):
+                before = self.p.mp
+                self.p.restore_mp(6)
+                self.log.append(co(f"  Channeling restores {self.p.mp - before} MP.", C.BLU))
 
-        elif 1 <= ch <= 3:  # Skills
+        elif 1 <= ch <= 3:
             sk = skills[ch - 1]
             if self.p.mp < sk["cost"]:
-                self.log.append(co("  Not enough mana!", C.RED))
-                return self.player_turn()
+                self.log.append(co("  Not enough mana! Choose another action.", C.RED))
+                return False
             self.p.mp -= sk["cost"]
             self._execute_skill(sk)
-
-        elif ch == len(opts) - 3 + (0 if self.e.is_boss else 0):
-            # This is "Use Potion" — position varies
-            if ch == 4:
-                self._use_potion()
-                return
-            # else fallthrough detect
-            if opts[ch].startswith("Use"):
-                self._use_potion()
-                return
-            elif opts[ch].startswith("Defend") or "Defend" in opts[ch]:
-                self.p.defending = True
-                self.log.append(co("  You raise your guard, bracing for impact!", C.BLU))
-            else:
-                self._handle_action(opts, ch)
-                return
-        else:
-            self._handle_action(opts, ch)
-            return
-
-    def _handle_action(self, opts, ch):
-        label = opts[ch] if ch < len(opts) else ""
-        if isinstance(label, str) and "Flee" in label:
+        elif ch == 4:
+            return self._use_potion()
+        elif ch == 5:
+            self.p.defending = True
+            self.p.restore_mp(3)
+            self.log.append(co("  You brace for impact and recover up to 3 MP.", C.BLU))
+        elif ch == 6 and not self.e.is_boss:
             if random.random() < 0.6:
-                self.log.append(co("  You disengage and flee!", C.YEL))
                 self.fled = True
+                self.log.append(co("  You disengage and flee!", C.YEL))
             else:
                 self.log.append(co("  You fail to escape!", C.RED))
-        elif "Defend" in str(label):
-            self.p.defending = True
-            self.log.append(co("  You raise your guard, bracing for impact!", C.BLU))
-        elif "Potion" in str(label) or "Use" in str(label):
-            self._use_potion()
+        return True
 
     def _execute_skill(self, sk):
         t = sk["type"]
@@ -1350,14 +1390,14 @@ class Combat:
         available = {k: v for k, v in self.p.potions.items() if v > 0}
         if not available:
             self.log.append(co("  No potions available!", C.RED))
-            return
+            return False
         print(f"\n  {co('Potions:', C.YEL)}")
         pot_list = list(available.keys())
         opts = [f"{name} (x{available[name]}) - {POTION_TYPES[name]['desc']}" for name in pot_list]
         opts.append("Cancel")
         ch = get_choice(opts)
         if ch >= len(pot_list):
-            return
+            return False
         pname = pot_list[ch]
         pt = POTION_TYPES[pname]
         self.p.potions[pname] -= 1
@@ -1378,6 +1418,8 @@ class Combat:
         elif pt["type"] == "buff_def":
             self.p.status_effects.append({"name": "Ironbark", "turns": pt["turns"], "defense_bonus": pt["value"]})
             self.log.append(co(f"  Ironbark Tonic! +DEF for {pt['turns']} turns.", C.BLU))
+
+        return True
 
     def enemy_turn(self):
         if not self.e.is_alive():
@@ -1400,9 +1442,16 @@ class Combat:
             self.log.append(co(f"  {self.e.name} flies into a FRENZY!", C.BRED))
 
         # Special abilities
-        spec = self.e.get_special()
+        if self.e.intent in ("guard", "recover"):
+            self.log.append(co(f"  {self.e.name} {'holds its guard' if self.e.intent == 'guard' else 'catches its breath'}.", C.GRY))
+            return
+        spec = self.e.intent
+        if spec == "regen":
+            healed = min(self.e.max_hp - self.e.hp, max(1, int(self.e.max_hp * 0.05)))
+            self.e.hp += healed
+            spec = ("regen", healed)
         if spec == "poison":
-            dmg, _ = self.e.get_attack_damage()
+            dmg, _ = self._enemy_attack()
             actual, result = self.p.take_damage(dmg)
             if result == "dodged":
                 self.log.append(co(f"  {self.e.name}'s poisoned attack misses! You dodged!", C.BGRN))
@@ -1410,7 +1459,7 @@ class Combat:
                 self.log.append(co(f"  You block {self.e.name}'s poisoned attack!", C.BGRN))
             else:
                 self.log.append(f"  {co(self.e.name, C.RED)} poisons you for {co(str(actual), C.RED)} damage!")
-                if not any(e["name"] == "Poison" for e in self.p.status_effects):
+                if not self.p.defending and not any(e["name"] == "Poison" for e in self.p.status_effects):
                     dot = max(2, int(self.e.atk * 0.15))
                     self.p.status_effects.append({"name": "Poison", "turns": 3, "dot": dot})
                     self.log.append(co(f"  You are POISONED! ({dot} dmg/turn for 3 turns)", C.MAG))
@@ -1428,7 +1477,7 @@ class Combat:
         elif isinstance(spec, tuple) and spec[0] == "regen":
             self.log.append(co(f"  {self.e.name} regenerates {spec[1]} HP!", C.MAG))
             # Still attacks
-            dmg, hit_type = self.e.get_attack_damage()
+            dmg, hit_type = self._enemy_attack()
             actual, result = self.p.take_damage(dmg)
             if result == "dodged":
                 self.log.append(co(f"  {self.e.name} attacks but you dodge!", C.BGRN))
@@ -1442,7 +1491,7 @@ class Combat:
                     self.e.hp = max(0, self.e.hp - result)
         else:
             # Normal attack
-            dmg, hit_type = self.e.get_attack_damage()
+            dmg, hit_type = self._enemy_attack()
             actual, result = self.p.take_damage(dmg)
             if result == "dodged":
                 self.log.append(co(f"  {self.e.name} attacks but you dodge!", C.BGRN))
@@ -1455,13 +1504,19 @@ class Combat:
                     self.log.append(co(f"  Flame Shield reflects {result} damage!", C.RED))
                     self.e.hp = max(0, self.e.hp - result)
 
+        relic = self.p.equipment["accessory"]
+        if self.p.defending and relic and relic.special.startswith("Riposte:") and spec != "fear" and actual > 0:
+            reflected = self.e.take_damage(max(1, int(self.p.attack_power * 0.6)))
+            self.log.append(co(f"  Riposte! Your guard returns {reflected} damage.", C.BCYN))
+
     def run(self):
         if self.e.taunt:
             self.log.append(co(f'  "{self.e.taunt}"', C.BRED))
         while self.p.is_alive() and self.e.is_alive() and not self.fled:
             self.display()
             # Player turn
-            self.player_turn()
+            if self.player_turn() is False:
+                continue
             if self.fled:
                 break
             if not self.e.is_alive():
@@ -1475,6 +1530,7 @@ class Combat:
             self.log.extend(msgs)
             # Damage bonus from status effects
             self.turn += 1
+            self._plan_intent()
 
         self.display()
         if self.fled:
@@ -1489,6 +1545,28 @@ class Combat:
 #  DUNGEON
 # ═══════════════════════════════════════════════════════════════
 
+CAMPAIGN_CHAPTERS = [
+    ("The Missing Courier", "Find Lukas's trail in the upper ruins. Defeat the guardian to recover his satchel."),
+    ("A Voice Behind the Wall", "Lukas is alive, but his captors are burning the evidence. Choose what to save."),
+    ("The Ritual Engine", "The ledger points to a ritual below. Sabotage its weapons or its protective seal."),
+    ("The Captain's Price", "Captain Voss sold the patrol routes to the cult. Decide his fate."),
+    ("The Bell Below", "Silence the Bell Warden before the ritual reaches Ubersreik."),
+]
+
+RELICS = [
+    ("Bloodglass Pendant", "Blood Echo: basic attacks cost 5% max HP for two 70% strikes; normal strike if too wounded"),
+    ("Waystone Focus", "Channeling: basic attacks restore 6 MP"),
+    ("Oathkeeper's Seal", "Riposte: defend returns 60% attack power after a damaging strike"),
+]
+
+
+def campaign_status(player):
+    if player.campaign_stage >= len(CAMPAIGN_CHAPTERS):
+        return "The Bell Below — complete. Ubersreik is safe; the deeper ruins remain."
+    title, objective = CAMPAIGN_CHAPTERS[player.campaign_stage]
+    return f"The Bell Below — Depth {player.campaign_stage + 1}: {title}. {objective}"
+
+
 class Dungeon:
     def __init__(self, player, depth):
         self.p = player
@@ -1502,6 +1580,7 @@ class Dungeon:
         self.camp_used = False
         self.contract = random.choice(["hunter", "explorer"])
         self.contract_progress = 0
+        self.chapter_choice = None
 
     def _generate_rooms(self):
         n = random.randint(4, 6)
@@ -1551,6 +1630,8 @@ class Dungeon:
         else:
             wrap("You light your torch and descend into the darkness below Ubersreik. "
                  "The entrance gives way to ancient passages carved long before the Empire. Stay alert.", C.GRY)
+        if self.depth == self.p.campaign_stage + 1 and self.depth <= 5:
+            wrap(campaign_status(self.p), C.CYN)
         goal = "Defeat 3 enemies" if self.contract == "hunter" else "Explore 3 non-combat rooms"
         wrap(f"Contract: {goal} and clear this depth for {30 + self.depth * 10} extra gold.", C.BYEL)
         pause()
@@ -1571,6 +1652,8 @@ class Dungeon:
                           "event": "Distant voices — a stranger or discovery", "empty": "Quiet passage — a moment of respite"}
                 choice = get_choice([labels[room["event"]], labels[room["alternative"]]])
                 room = dict(room, event=room["event"] if choice == 0 else room["alternative"])
+            if i == len(self.rooms) - 1 and self.depth == self.p.campaign_stage + 1 and self.depth <= 5:
+                self._chapter_scene()
             result = self._run_room(room)
             if room["event"] not in ("combat", "boss", "miniboss"):
                 self.contract_progress += 1
@@ -1607,9 +1690,11 @@ class Dungeon:
     def _camp(self):
         if self.camp_used:
             return
-        choice = get_choice(["Tend wounds — restore 30% HP", "Meditate — restore 40% MP"])
+        healing = 45 if "courier_rescued" in self.p.story_flags else 30
+        choice = get_choice([f"Tend wounds — restore {healing}% HP", "Meditate — restore 40% MP"])
         if choice == 0:
-            self.p.heal(max(1, int(self.p.max_hp * 0.3)))
+            fraction = 0.45 if "courier_rescued" in self.p.story_flags else 0.3
+            self.p.heal(max(1, int(self.p.max_hp * fraction)))
         else:
             self.p.restore_mp(max(1, int(self.p.max_mp * 0.4)))
         self.camp_used = True
@@ -1648,8 +1733,81 @@ class Dungeon:
         else:
             return "dead"
 
-    def _boss(self):
+    def _make_guardian(self):
         boss = make_boss(self.depth)
+        if self.depth == 5 and self.p.campaign_stage == 4:
+            boss.name = "The Bell Warden"
+            boss.taunt = "Every toll is another name erased. Yours is next."
+            boss.intro = ["A stolen watchman's bell hangs inside a cage of black iron. Its keeper raises a hammer."]
+            if "weapons_sabotaged" in self.p.story_flags:
+                boss.atk = max(1, int(boss.atk * 0.8))
+            if "seal_broken" in self.p.story_flags:
+                boss.max_hp = max(1, int(boss.max_hp * 0.75))
+                boss.hp = boss.max_hp
+        return boss
+
+    def _chapter_scene(self):
+        title, _ = CAMPAIGN_CHAPTERS[self.depth - 1]
+        hdr(title, C.CYN)
+        if self.depth == 1:
+            wrap("Lukas's torn satchel hangs from the guardian's belt. Inside glints an old watch relic. He may still be alive.", C.CYN)
+        elif self.depth == 2:
+            wrap("Lukas calls from a locked cell. Across the hall, a brazier consumes the captain's ledger. You can reach only one before the guardian arrives.", C.CYN)
+            choice = get_choice(["Rescue Lukas — future camps heal 45% HP", "Save the ledger — earn 100 gold on clearing; Lukas is lost"])
+            self.chapter_choice = "courier_rescued" if choice == 0 else "ledger_saved"
+        elif self.depth == 3:
+            wrap("The cult's forge feeds the Bell Warden. One blow can ruin its weapons or shatter the warding seal.", C.CYN)
+            choice = get_choice(["Sabotage weapons — final story boss has 20% less attack", "Break the seal — final story boss has 25% less HP"])
+            self.chapter_choice = "weapons_sabotaged" if choice == 0 else "seal_broken"
+        elif self.depth == 4:
+            wrap("Voss waits beside the exit. 'I only sold the routes. I never asked what they carried below.' He offers coin for silence.", C.CYN)
+            choice = get_choice(["Bring Voss to trial — receive 2 health and 2 mana potions on clearing", "Take his bargain — receive 150 gold on clearing; Voss escapes"])
+            self.chapter_choice = "captain_trial" if choice == 0 else "captain_bargain"
+        else:
+            wrap("The bell begins to swing. Beyond this door, the fate of the missing patrol will finally be decided.", C.BYEL)
+        pause()
+
+    def _claim_relic(self):
+        if self.p.campaign_stage < 1 or "watch_relic_claimed" in self.p.story_flags:
+            return
+        if len(self.p.inventory) >= 20 and self.p.equipment["accessory"]:
+            wrap("Your watch relic awaits. Free an inventory slot; claim it after your next cleared depth.", C.YEL)
+            return
+        wrap("The watch offers one relic. Choose your fighting style; it will be equipped in your accessory slot.", C.CYN)
+        choice = get_choice([f"{name} — {effect}" for name, effect in RELICS] + ["Decide after another cleared depth"])
+        if choice == len(RELICS):
+            return
+        name, effect = RELICS[choice]
+        item = Item(name, "accessory", "Rare", 1, special=effect)
+        self.p.equip(item)
+        self.p.set_story_flag("watch_relic_claimed")
+        print(co(f"  Equipped {name}. Any previous accessory was moved to your inventory.", C.BGRN))
+
+    def _complete_chapter(self):
+        if self.depth != self.p.campaign_stage + 1 or self.depth > 5:
+            return
+        self.p.campaign_stage += 1
+        if self.chapter_choice:
+            self.p.set_story_flag(self.chapter_choice)
+        if self.chapter_choice in ("ledger_saved", "captain_bargain"):
+            reward = 100 if self.chapter_choice == "ledger_saved" else 150
+            self.p.gold += reward
+            self.p.total_gold_earned += reward
+            self.gold_found += reward
+            print(co(f"  Chapter reward: +{reward} gold.", C.BYEL))
+        if self.chapter_choice == "captain_trial":
+            for potion in ("Health Potion", "Mana Potion"):
+                self.p.potions[potion] = self.p.potions.get(potion, 0) + 2
+            print(co("  The watch supplies two health and two mana potions.", C.BGRN))
+        print(co(f"  Chapter {self.depth} complete: {CAMPAIGN_CHAPTERS[self.depth - 1][0]}", C.BYEL))
+        if self.depth == 5:
+            wrap("The bell cracks. For the first time in weeks, Ubersreik sleeps without hearing a name whispered beneath the streets.", C.CYN)
+            wrap("Lukas returns to his family and teaches the watch your survival tricks." if "courier_rescued" in self.p.story_flags else "The ledger exposes the cult's patrons, but Lukas's empty chair remains by the tavern fire.", C.CYN)
+            wrap("Voss stands trial before the families he betrayed." if "captain_trial" in self.p.story_flags else "Voss vanishes with your silence. Somewhere beyond the city, the debt remains.", C.CYN)
+            wrap("THE BELL BELOW — COMPLETE. You may keep exploring the endless depths.", C.BYEL)
+
+    def _boss(self):
+        boss = self._make_guardian()
         clr()
         hdr(f"⚔  BOSS: {boss.name.upper()}  ⚔", C.BYEL)
         print()
@@ -2023,6 +2181,9 @@ class Dungeon:
         else:
             hdr("RETREAT", C.YEL)
 
+        if cleared:
+            self._complete_chapter()
+            self._claim_relic()
         progress = self.kills if self.contract == "hunter" else self.contract_progress
         if cleared and progress >= 3:
             reward = 30 + self.depth * 10
@@ -2106,6 +2267,7 @@ class Town:
                 print(f"  XP: {xp_bar(self.p.xp, self.p.xp_to_level)}")
             print(f"  {co('Town Status:', C.BYEL)} Day {self.p.world_day}, {self.p.world_time} | {self.p.world_weather}")
             print(f"  {co('Omen:', C.MAG)} {self.p.world_omen}")
+            wrap(campaign_status(self.p), C.CYN)
             if self.p.last_expedition:
                 le = self.p.last_expedition
                 print(f"  {co('Last Expedition:', C.CYN)} Depth {le.get('depth', '?')} | {le.get('outcome', 'Unknown')} | "
@@ -2730,18 +2892,22 @@ class Game:
              "Every 5th depth features a powerful Boss.", C.GRY)
         print()
 
+        depths = list(range(max(1, max_available - 4), max_available + 1))
+        if self.player.campaign_stage < 5:
+            depths = sorted(set(depths + [self.player.campaign_stage + 1]))
         opts = []
-        for d in range(max(1, max_available - 4), max_available + 1):
+        for d in depths:
             boss_tag = co(" [BOSS]", C.BYEL) if d % 5 == 0 else ""
             new_tag = co(" [NEW]", C.BRED) if d > self.player.max_depth_cleared else ""
-            opts.append(f"Depth {d}{boss_tag}{new_tag}")
+            story_tag = " [STORY]" if self.player.campaign_stage < 5 and d == self.player.campaign_stage + 1 else ""
+            opts.append(f"Depth {d}{boss_tag}{new_tag}{story_tag}")
         opts.append("Back to town")
         ch = get_choice(opts)
 
         if ch >= len(opts) - 1:
             return
 
-        depth = max(1, max_available - 4) + ch
+        depth = depths[ch]
         dungeon = Dungeon(self.player, depth)
         dungeon.run()
         self.player.advance_world(1)

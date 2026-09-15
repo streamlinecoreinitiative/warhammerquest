@@ -73,3 +73,34 @@ Back it up if you want to preserve progress!
 ## Verification
 
 Run `python3 -B -m unittest discover -s tests -v` for combat effects, expedition routes, contracts, camping, defeat reporting, and save compatibility. Tests do not write to your save file.
+
+## The Bell Below — a five-depth adventure
+
+Follow the `[STORY]` depth from town to find a missing courier, expose a betrayal, sabotage a ritual, and face the Bell Warden. Each chapter advances only after its final guardian is defeated. Decisions affect supplies, camping, the final boss, and the ending. After chapter five, endless exploration remains available.
+
+Existing saves start at chapter one without losing their level, equipment, gold, or cleared depths. The next story depth remains selectable even if your character has already progressed far beyond it. Story choices and chapter progress are saved with your character.
+
+### Read your enemy
+
+Combat shows the enemy's **intent before your action**:
+
+- **Heavy blow:** defend, dodge, or stun. Heavy enemies and bosses recover afterward, taking 50% extra damage and skipping their attack.
+- **Guard:** the enemy takes half damage and does not attack; prepare or recover resources.
+- **Poison strike:** defending prevents new poison, while still reducing the incoming strike.
+- Fear and regeneration are also announced. Enemies with several abilities alternate their special openings.
+
+Defending restores up to 3 MP. Cancelling the potion menu or choosing an unaffordable skill no longer gives the enemy a free turn.
+
+### Choose a watch relic
+
+After clearing the first story chapter, choose one accessory:
+
+| Relic | Effect |
+| --- | --- |
+| Bloodglass Pendant | Basic attacks spend 5% maximum HP for two strikes at 70% damage each. If too wounded to pay safely, use one normal strike. |
+| Waystone Focus | Basic attacks restore up to 6 MP, supporting more skill use. |
+| Oathkeeper's Seal | Taking a damaging hit while defending triggers a counterattack at 60% attack power, reduced by enemy defenses. |
+
+The relic equips immediately and moves your previous accessory to inventory. You can defer your choice; if your inventory is full and an accessory is equipped, free a slot and claim the relic after another successful expedition. Relics work for all four classes and retain their effects through save/load.
+
+The automated suite covers tactical counters, real combat loops for all classes, relics, chapter progression, rewards, old saves, and the earlier regression cases. Difficulty and pacing still benefit from human playtesting.
